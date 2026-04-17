@@ -350,9 +350,9 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 from telethon.tl.types import (
                     Channel, Chat,
                     InputPeerChannel, InputPeerChat,
-                    InputDialogPeer,
                     ChannelParticipantCreator,
-                    DialogFilter as TLDialogFilter
+                    DialogFilter as TLDialogFilter,
+                    TextWithEntities
                 )
                 from telethon.tl.functions.channels import GetParticipantRequest as GetChannelParticipant
 
@@ -362,7 +362,6 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 async for dialog in client.iter_dialogs():
                     entity = dialog.entity
                     try:
-                        # ════ قنوات وسوبرجروبات ════
                         if isinstance(entity, Channel):
                             try:
                                 part = await client(GetChannelParticipant(
@@ -370,16 +369,13 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                                     participant=me
                                 ))
                                 if isinstance(part.participant, ChannelParticipantCreator):
-                                    peer = InputPeerChannel(entity.id, entity.access_hash)
-                                    owned_peers.append(InputDialogPeer(peer=peer))
+                                    owned_peers.append(InputPeerChannel(entity.id, entity.access_hash))
                                     owned_names.append(f"📢 {entity.title}")
                             except Exception:
                                 pass
-                        # ════ جروبات عادية ════
                         elif isinstance(entity, Chat):
                             if getattr(entity, 'creator', False):
-                                peer = InputPeerChat(entity.id)
-                                owned_peers.append(InputDialogPeer(peer=peer))
+                                owned_peers.append(InputPeerChat(entity.id))
                                 owned_names.append(f"👥 {entity.title}")
                     except Exception:
                         pass
@@ -388,23 +384,23 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                     await reply_or_edit(event, "❌ مش لاقي أي قناة أو جروب إنت مالكها!")
                     return
 
-                # ════ نجيب ID للفلاتر الموجودة عشان نعمل ID جديد ════
+                # نجيب ID جديد للمجلد
                 try:
                     existing_filters = await client(GetDialogFiltersRequest())
                     used_ids = [
                         f.id for f in existing_filters.filters
-                        if hasattr(f, 'id') and isinstance(f, TLDialogFilter)
+                        if hasattr(f, 'id')
                     ]
                     new_id = max(used_ids, default=1) + 1
                     if new_id > 255:
-                        new_id = max(2, min(used_ids) - 1) if used_ids else 2
+                        new_id = 2
                 except Exception:
                     new_id = 10
 
-                # ════ نعمل المجلد ════
+                # نعمل المجلد - title محتاج TextWithEntities في النسخ الجديدة
                 dialog_filter = TLDialogFilter(
                     id=new_id,
-                    title=folder_name,
+                    title=TextWithEntities(text=folder_name, entities=[]),
                     pinned_peers=[],
                     include_peers=owned_peers,
                     exclude_peers=[],
@@ -416,7 +412,6 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                     exclude_muted=False,
                     exclude_read=False,
                     exclude_archived=False,
-                    emoticon="📁"
                 )
 
                 await client(UpdateDialogFilterRequest(
