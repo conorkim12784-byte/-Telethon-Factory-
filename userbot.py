@@ -58,7 +58,15 @@ COMMANDS_TEXT = """📌 **قائمة الأوامر** 📌
 
 👋 **الترحيب (خاص):**
 يتفعل تلقائياً عند أول رسالة
-`.قبول` (رد على رسالة) — إيقاف الترحيب لهذا المستخدم
+`.قبول` (رد على رسالة) — إيقاف الترحيب + حذف رسالة الترحيب تلقائياً
+
+━━━━━━━━━━━━━━━━━━━━
+
+😴 **وضع النوم:**
+`.نايم` — تفعيل وضع النوم (رد تلقائي لكل من يكلمك)
+`.نايم <رسالة>` — نفس الأمر برسالة مخصصة
+`.صحيت` — إيقاف وضع النوم
+> ملاحظة: لو رددت على حد وإنت نايم، وضع النوم بيتعطل في محادثته بس
 
 ━━━━━━━━━━━━━━━━━━━━
 
@@ -80,9 +88,11 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
 
     # ══ الحالات الداخلية ══
     muted_admins = {}          # {chat_id: set(user_ids)}
-    welcomed_users = set()     # المستخدمين اللي اتبعتلهم ترحيب
+    welcomed_users = {}        # {sender_id: msg_id} - رسايل الترحيب اللي اتبعتت
     accepted_users = set()     # المستخدمين اللي اتعملهم .قبول
     tracked_channels = {}      # {source_channel_id: dest_channel_id}
+    sleep_mode = False         # وضع النوم
+    sleep_replied = set()      # المحادثات اللي رددت فيها وهو نايم (تتعطل فيها)
 
     # ══════════════════════════════════════════
     #         وظائف مساعدة مشتركة
@@ -205,22 +215,23 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
         if not sender or getattr(sender, 'bot', False):
             return
 
-        welcomed_users.add(sender_id)
         welcome_text = (
             f"أهلاً وسهلاً بيك! 🔥\n\n"
             f"سيب رسالتك وهنرد عليك في أقرب وقت 💬\n\n"
             f"{SOURCE_TAG}"
         )
         try:
-            await client.send_file(
+            sent = await client.send_file(
                 event.chat_id,
                 WELCOME_GIF,
                 caption=welcome_text,
                 parse_mode='markdown'
             )
+            welcomed_users[sender_id] = sent.id  # نحفظ ID الرسالة عشان نحذفها بعدين
         except Exception:
             try:
-                await event.respond(welcome_text, parse_mode='markdown')
+                sent = await event.respond(welcome_text, parse_mode='markdown')
+                welcomed_users[sender_id] = sent.id
             except Exception as e:
                 logging.error(f"❌ خطأ ترحيب: {e}")
 
@@ -242,11 +253,19 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             await reply_or_edit(event, COMMANDS_TEXT, parse_mode='markdown')
             return
 
-        # ════ قبول (إيقاف ترحيب لمستخدم معين) ════
+        # ════ قبول (إيقاف ترحيب لمستخدم معين + حذف رسالة الترحيب) ════
         if cmd == ".قبول" and event.is_reply:
             reply = await event.get_reply_message()
-            accepted_users.add(reply.sender_id)
-            welcomed_users.discard(reply.sender_id)
+            target_id = reply.sender_id
+            accepted_users.add(target_id)
+            # احذف رسالة الترحيب لو موجودة
+            if target_id in welcomed_users:
+                try:
+                    await client.delete_messages(event.chat_id, welcomed_users[target_id])
+                except Exception:
+                    pass
+                del welcomed_users[target_id]
+            # احذف أمر .قبول نفسه
             try:
                 await event.delete()
             except Exception:
@@ -330,7 +349,9 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 from telethon.tl.types import (
                     Channel, Chat,
                     InputPeerChannel, InputPeerChat,
-                    ChannelParticipantCreator
+                    InputDialogPeer,
+                    ChannelParticipantCreator,
+                    DialogFilter as TLDialogFilter
                 )
                 from telethon.tl.functions.channels import GetParticipantRequest as GetChannelParticipant
 
@@ -348,14 +369,16 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                                     participant=me
                                 ))
                                 if isinstance(part.participant, ChannelParticipantCreator):
-                                    owned_peers.append(InputPeerChannel(entity.id, entity.access_hash))
+                                    peer = InputPeerChannel(entity.id, entity.access_hash)
+                                    owned_peers.append(InputDialogPeer(peer=peer))
                                     owned_names.append(f"📢 {entity.title}")
                             except Exception:
                                 pass
                         # ════ جروبات عادية ════
                         elif isinstance(entity, Chat):
                             if getattr(entity, 'creator', False):
-                                owned_peers.append(InputPeerChat(entity.id))
+                                peer = InputPeerChat(entity.id)
+                                owned_peers.append(InputDialogPeer(peer=peer))
                                 owned_names.append(f"👥 {entity.title}")
                     except Exception:
                         pass
@@ -367,7 +390,10 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 # ════ نجيب ID للفلاتر الموجودة عشان نعمل ID جديد ════
                 try:
                     existing_filters = await client(GetDialogFiltersRequest())
-                    used_ids = [f.id for f in existing_filters if hasattr(f, 'id')]
+                    used_ids = [
+                        f.id for f in existing_filters.filters
+                        if hasattr(f, 'id') and isinstance(f, TLDialogFilter)
+                    ]
                     new_id = max(used_ids, default=1) + 1
                     if new_id > 255:
                         new_id = max(2, min(used_ids) - 1) if used_ids else 2
@@ -375,7 +401,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                     new_id = 10
 
                 # ════ نعمل المجلد ════
-                dialog_filter = DialogFilter(
+                dialog_filter = TLDialogFilter(
                     id=new_id,
                     title=folder_name,
                     pinned_peers=[],
@@ -408,6 +434,26 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 )
             except Exception as e:
                 await reply_or_edit(event, f"❌ حصل خطأ: {e}")
+            return
+
+        # ════ وضع النوم - تفعيل ════
+        if cmd == ".نايم":
+            nonlocal sleep_mode
+            sleep_mode = True
+            sleep_replied.clear()
+            msg = " ".join(args) if args else "😴 أنا نايم دلوقتي، هرد عليك لما أصحى!"
+            # نحفظ الرسالة المخصصة
+            handle_commands._sleep_msg = msg
+            await reply_or_edit(event, f"🌙 تم تفعيل وضع النوم!\n\n💬 رسالة الرد: {msg}")
+            return
+
+        # ════ وضع النوم - إيقاف ════
+        if cmd == ".صحيت":
+            nonlocal sleep_mode
+            sleep_mode = False
+            sleep_replied.clear()
+            handle_commands._sleep_msg = ""
+            await reply_or_edit(event, "☀️ تم إيقاف وضع النوم!")
             return
 
         # ══════════════════════════════════════════
@@ -519,6 +565,47 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 await event.delete()
             except Exception:
                 pass
+
+    # ══════════════════════════════════════════
+    #    رد وضع النوم التلقائي
+    # ══════════════════════════════════════════
+    @client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
+    async def sleep_auto_reply(event):
+        nonlocal sleep_mode
+        if not sleep_mode:
+            return
+        sender_id = event.sender_id
+        # لو المحادثة دي رددت فيها قبل كده، متبعتش تاني
+        if sender_id in sleep_replied:
+            return
+        sender = await event.get_sender()
+        if not sender or getattr(sender, 'bot', False):
+            return
+        sleep_msg = getattr(handle_commands, '_sleep_msg', "😴 أنا نايم دلوقتي، هرد عليك لما أصحى!")
+        try:
+            await client.send_message(event.chat_id, sleep_msg)
+            sleep_replied.add(sender_id)
+        except Exception as e:
+            logging.error(f"❌ خطأ وضع النوم: {e}")
+
+    # ══════════════════════════════════════════
+    #    لو رددت على حد وهو نايم - اتعطل في محادثته
+    # ══════════════════════════════════════════
+    @client.on(events.NewMessage(outgoing=True, func=lambda e: e.is_private))
+    async def sleep_disable_on_reply(event):
+        nonlocal sleep_mode
+        if not sleep_mode:
+            return
+        # لو بعتت رسالة لحد معناها رددت عليه - اتعطل في محادثته بس
+        chat_id = event.chat_id
+        if chat_id in sleep_replied:
+            sleep_replied.discard(chat_id)
+        # نضيفه لـ accepted عشان ميبعتلوش رد النوم تاني
+        sleep_replied.discard(event.chat_id)
+        # نعطل وضع النوم في المحادثة دي بإضافة الـ ID لـ sleep_replied
+        # (الهاندلر بيتجاهل اللي في sleep_replied)
+        # لكن نضيف chat_id (= sender_id في الخاص)
+        sleep_replied.add(event.chat_id)
 
     logging.info(f"✅ كل الهاندلرز اشتغلوا - {me.first_name}")
     print(f"✅ كل الهاندلرز اشتغلوا - {me.first_name}")
