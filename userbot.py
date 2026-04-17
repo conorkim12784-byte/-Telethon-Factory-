@@ -93,6 +93,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
     tracked_channels = {}      # {source_channel_id: dest_channel_id}
     sleep_mode = False         # وضع النوم
     sleep_replied = set()      # المحادثات اللي رددت فيها وهو نايم (تتعطل فيها)
+    sleep_state = {"active": False, "msg": "😴 أنا نايم دلوقتي، هرد عليك لما أصحى!"}  # dict عشان يتعدل من nested functions
 
     # ══════════════════════════════════════════
     #         وظائف مساعدة مشتركة
@@ -438,21 +439,17 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
 
         # ════ وضع النوم - تفعيل ════
         if cmd == ".نايم":
-            nonlocal sleep_mode
-            sleep_mode = True
+            sleep_state["active"] = True
             sleep_replied.clear()
-            msg = " ".join(args) if args else "😴 أنا نايم دلوقتي، هرد عليك لما أصحى!"
-            # نحفظ الرسالة المخصصة
-            handle_commands._sleep_msg = msg
-            await reply_or_edit(event, f"🌙 تم تفعيل وضع النوم!\n\n💬 رسالة الرد: {msg}")
+            sleep_state["msg"] = " ".join(args) if args else "😴 أنا نايم دلوقتي، هرد عليك لما أصحى!"
+            await reply_or_edit(event, f"🌙 تم تفعيل وضع النوم!\n\n💬 رسالة الرد: {sleep_state['msg']}")
             return
 
         # ════ وضع النوم - إيقاف ════
         if cmd == ".صحيت":
-            nonlocal sleep_mode
-            sleep_mode = False
+            sleep_state["active"] = False
             sleep_replied.clear()
-            handle_commands._sleep_msg = ""
+            sleep_state["msg"] = "😴 أنا نايم دلوقتي، هرد عليك لما أصحى!"
             await reply_or_edit(event, "☀️ تم إيقاف وضع النوم!")
             return
 
@@ -571,19 +568,16 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
     # ══════════════════════════════════════════
     @client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
     async def sleep_auto_reply(event):
-        nonlocal sleep_mode
-        if not sleep_mode:
+        if not sleep_state["active"]:
             return
         sender_id = event.sender_id
-        # لو المحادثة دي رددت فيها قبل كده، متبعتش تاني
         if sender_id in sleep_replied:
             return
         sender = await event.get_sender()
         if not sender or getattr(sender, 'bot', False):
             return
-        sleep_msg = getattr(handle_commands, '_sleep_msg', "😴 أنا نايم دلوقتي، هرد عليك لما أصحى!")
         try:
-            await client.send_message(event.chat_id, sleep_msg)
+            await client.send_message(event.chat_id, sleep_state["msg"])
             sleep_replied.add(sender_id)
         except Exception as e:
             logging.error(f"❌ خطأ وضع النوم: {e}")
@@ -593,18 +587,9 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
     # ══════════════════════════════════════════
     @client.on(events.NewMessage(outgoing=True, func=lambda e: e.is_private))
     async def sleep_disable_on_reply(event):
-        nonlocal sleep_mode
-        if not sleep_mode:
+        if not sleep_state["active"]:
             return
-        # لو بعتت رسالة لحد معناها رددت عليه - اتعطل في محادثته بس
-        chat_id = event.chat_id
-        if chat_id in sleep_replied:
-            sleep_replied.discard(chat_id)
-        # نضيفه لـ accepted عشان ميبعتلوش رد النوم تاني
-        sleep_replied.discard(event.chat_id)
-        # نعطل وضع النوم في المحادثة دي بإضافة الـ ID لـ sleep_replied
-        # (الهاندلر بيتجاهل اللي في sleep_replied)
-        # لكن نضيف chat_id (= sender_id في الخاص)
+        # لو بعتت رسالة لحد - اضيفه لـ sleep_replied عشان ميتبعتلوش رد النوم تاني
         sleep_replied.add(event.chat_id)
 
     logging.info(f"✅ كل الهاندلرز اشتغلوا - {me.first_name}")
