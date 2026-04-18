@@ -834,8 +834,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             if not sent_via_bot:
                 fallback = (
                     f"✨ **سورس البوت**\n\n"
-                    f"🛠 تم التطوير بواسطة: [{dev_name}](tg://user?id={DEVELOPER_ID})\n"
-                    f"💬 تواصل مع المطور: tg://user?id={DEVELOPER_ID}"
+                    f"🛠 تم التطوير بواسطة: [{dev_name}](tg://user?id={DEVELOPER_ID})"
                 )
                 await event.reply(fallback, parse_mode='markdown')
 
