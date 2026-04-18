@@ -769,5 +769,78 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
         # لو بعتت رسالة لحد - اضيفه لـ sleep_replied عشان ميتبعتلوش رد النوم تاني
         sleep_replied.add(event.chat_id)
 
+    # ══════════════════════════════════════════
+    #    رد سورس (اليوزربوت يطلب من البوت يبعت)
+    # ══════════════════════════════════════════
+    DEVELOPER_ID = 1923931101
+    SOURCE_VIDEO = os.getenv("SOURCE_VIDEO", "")  # file_id أو رابط الفيديو في .env
+
+    @client.on(events.NewMessage(incoming=True, pattern=r'(?i)^سورس$'))
+    async def source_reply(event):
+        if event.sender_id == owner_id:
+            return
+        try:
+            bot_token = user_data_store.get('bot_token', '')
+            dev_name = "المطور"
+            try:
+                dev_entity = await client.get_entity(DEVELOPER_ID)
+                dev_name = getattr(dev_entity, 'first_name', '') or "المطور"
+            except Exception:
+                pass
+
+            caption = (
+                f"✨ **سورس البوت**\n\n"
+                f"🛠 تم التطوير بواسطة: [{dev_name}](tg://user?id={DEVELOPER_ID})"
+            )
+
+            sent_via_bot = False
+
+            if bot_token:
+                import aiohttp, json
+                keyboard = {
+                    "inline_keyboard": [[
+                        {"text": f"👨‍💻 {dev_name}", "url": f"tg://user?id={DEVELOPER_ID}"}
+                    ]]
+                }
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        if SOURCE_VIDEO:
+                            resp = await session.post(
+                                f"https://api.telegram.org/bot{bot_token}/sendVideo",
+                                json={
+                                    "chat_id": event.chat_id,
+                                    "video": SOURCE_VIDEO,
+                                    "caption": caption,
+                                    "parse_mode": "Markdown",
+                                    "reply_markup": json.dumps(keyboard)
+                                }
+                            )
+                        else:
+                            resp = await session.post(
+                                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                                json={
+                                    "chat_id": event.chat_id,
+                                    "text": caption,
+                                    "parse_mode": "Markdown",
+                                    "reply_markup": json.dumps(keyboard)
+                                }
+                            )
+                        result = await resp.json()
+                        sent_via_bot = result.get("ok", False)
+                except Exception:
+                    sent_via_bot = False
+
+            # لو البوت مش في الجروب أو فشل → اليوزربوت يبعت markdown بدون أزرار
+            if not sent_via_bot:
+                fallback = (
+                    f"✨ **سورس البوت**\n\n"
+                    f"🛠 تم التطوير بواسطة: [{dev_name}](tg://user?id={DEVELOPER_ID})\n"
+                    f"💬 تواصل مع المطور: tg://user?id={DEVELOPER_ID}"
+                )
+                await event.reply(fallback, parse_mode='markdown')
+
+        except Exception as e:
+            logging.error(f"❌ خطأ سورس: {e}")
+
     logging.info(f"✅ كل الهاندلرز اشتغلوا - {me.first_name}")
     print(f"✅ كل الهاندلرز اشتغلوا - {me.first_name}")
