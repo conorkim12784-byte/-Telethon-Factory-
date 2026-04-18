@@ -654,61 +654,78 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             return
 
     # ══════════════════════════════════════════
-    #    مراقبة حظر المشرفين
+    #    مراقبة حظر المشرفين (polling كل 10 ثواني)
     # ══════════════════════════════════════════
-    @client.on(events.ChatAction(func=lambda e: e.user_kicked or e.user_left))
-    async def monitor_admin_bans(event):
-        chat_id = event.chat_id
-        if chat_id not in ban_limits:
-            return
-        try:
-            async for admin_event in client.iter_admin_log(chat_id, ban=True, limit=1):
-                banner_id = admin_event.user_id
-                if banner_id == owner_id:
-                    return
-                if chat_id not in admin_ban_count:
-                    admin_ban_count[chat_id] = {}
-                admin_ban_count[chat_id][banner_id] = admin_ban_count[chat_id].get(banner_id, 0) + 1
-                count = admin_ban_count[chat_id][banner_id]
-                limit = ban_limits[chat_id]
-                if count >= limit:
-                    try:
-                        await client(EditAdminRequest(
-                            channel=chat_id,
-                            user_id=banner_id,
-                            admin_rights=ChatAdminRights(
-                                change_info=False, post_messages=False, edit_messages=False,
-                                delete_messages=False, ban_users=False, invite_users=False,
-                                pin_messages=False, add_admins=False, anonymous=False,
-                                manage_call=False, other=False,
-                            ),
-                            rank=""
-                        ))
-                        try:
-                            banner = await client.get_entity(banner_id)
-                            banner_name = getattr(banner, 'first_name', '') or getattr(banner, 'username', str(banner_id))
-                            banner_mention = f"[{banner_name}](tg://user?id={banner_id})"
-                        except Exception:
-                            banner_mention = f"[مشرف](tg://user?id={banner_id})"
-                        try:
-                            owner = await client.get_entity(owner_id)
-                            owner_name = getattr(owner, 'first_name', '') or str(owner_id)
-                            owner_mention = f"[{owner_name}](tg://user?id={owner_id})"
-                        except Exception:
-                            owner_mention = f"[المالك](tg://user?id={owner_id})"
-                        msg = (
-                            f"⚠️ **تنبيه أمني** ⚠️\n\n"
-                            f"تم سحب إشراف {banner_mention}\n"
-                            f"السبب: تجاوز الحد الأقصى للحظر ({count}/{limit})\n\n"
-                            f"🔔 {owner_mention} تم إشعارك!"
-                        )
-                        await client.send_message(chat_id, msg, parse_mode='markdown')
-                        admin_ban_count[chat_id][banner_id] = 0
-                    except Exception as e:
-                        logging.error(f"❌ خطأ سحب الإشراف: {e}")
-                break
-        except Exception as e:
-            logging.error(f"❌ خطأ مراقبة الحظر: {e}")
+    last_ban_log_id = {}  # {chat_id: last_seen_event_id}
+
+    async def check_admin_bans():
+        while True:
+            await asyncio.sleep(10)
+            for chat_id, limit in list(ban_limits.items()):
+                try:
+                    new_events = []
+                    last_id = last_ban_log_id.get(chat_id, 0)
+                    async for admin_event in client.iter_admin_log(chat_id, ban=True, limit=20):
+                        if admin_event.id <= last_id:
+                            break
+                        new_events.append(admin_event)
+
+                    if not new_events:
+                        continue
+
+                    # نحدث آخر ID شفناه
+                    last_ban_log_id[chat_id] = new_events[0].id
+
+                    for admin_event in reversed(new_events):
+                        banner_id = admin_event.user_id
+                        if banner_id == owner_id:
+                            continue
+                        if chat_id not in admin_ban_count:
+                            admin_ban_count[chat_id] = {}
+                        admin_ban_count[chat_id][banner_id] = admin_ban_count[chat_id].get(banner_id, 0) + 1
+                        count = admin_ban_count[chat_id][banner_id]
+
+                        if count >= limit:
+                            try:
+                                await client(EditAdminRequest(
+                                    channel=chat_id,
+                                    user_id=banner_id,
+                                    admin_rights=ChatAdminRights(
+                                        change_info=False, post_messages=False, edit_messages=False,
+                                        delete_messages=False, ban_users=False, invite_users=False,
+                                        pin_messages=False, add_admins=False, anonymous=False,
+                                        manage_call=False, other=False,
+                                    ),
+                                    rank=""
+                                ))
+                                try:
+                                    banner = await client.get_entity(banner_id)
+                                    banner_name = getattr(banner, 'first_name', '') or getattr(banner, 'username', str(banner_id))
+                                    banner_mention = f"[{banner_name}](tg://user?id={banner_id})"
+                                except Exception:
+                                    banner_mention = f"[مشرف](tg://user?id={banner_id})"
+                                try:
+                                    owner_ent = await client.get_entity(owner_id)
+                                    owner_name = getattr(owner_ent, 'first_name', '') or str(owner_id)
+                                    owner_mention = f"[{owner_name}](tg://user?id={owner_id})"
+                                except Exception:
+                                    owner_mention = f"[المالك](tg://user?id={owner_id})"
+
+                                msg = (
+                                    f"⚠️ **تنبيه أمني** ⚠️\n\n"
+                                    f"تم سحب إشراف {banner_mention}\n"
+                                    f"السبب: تجاوز الحد الأقصى للحظر ({count}/{limit})\n\n"
+                                    f"🔔 {owner_mention} تم إشعارك!"
+                                )
+                                await client.send_message(chat_id, msg, parse_mode='markdown')
+                                admin_ban_count[chat_id][banner_id] = 0
+                            except Exception as e:
+                                logging.error(f"❌ خطأ سحب الإشراف: {e}")
+                except Exception as e:
+                    logging.error(f"❌ خطأ مراقبة الحظر: {e}")
+
+    asyncio.ensure_future(check_admin_bans())
+
 
     @client.on(events.NewMessage(incoming=True, func=lambda e: e.is_group))
     async def delete_muted_admin_msgs(event):
