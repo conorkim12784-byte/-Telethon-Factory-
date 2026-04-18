@@ -41,6 +41,9 @@ COMMANDS_TEXT = """📌 **قائمة الأوامر** 📌
 `.فككتم` — فك التقييد
 `.كتم مشرف` — حذف رسائل مشرف تلقائياً
 `.فك كتم مشرف` — إيقاف حذف رسائل المشرف
+`.رفع مشرف <لقب>` — رفع المرد عليه مشرف بلقب مخصص وكل الصلاحيات
+`.حد حظر <عدد>` — تحديد الحد الأقصى للحظر لكل مشرف (يتسحب منه الإشراف لو تجاوز)
+`.الغ حد` — إلغاء حد الحظر في الجروب
 
 ━━━━━━━━━━━━━━━━━━━━
 
@@ -94,7 +97,9 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
     tracked_channels = {}      # {source_channel_id: dest_channel_id}
     sleep_mode = False         # وضع النوم
     sleep_replied = set()      # المحادثات اللي رددت فيها وهو نايم (تتعطل فيها)
-    sleep_state = {"active": False, "msg": "😴 أنا نايم دلوقتي، هرد عليك لما أصحى!"}  # dict عشان يتعدل من nested functions
+    sleep_state = {"active": False, "msg": "😴 أنا نايم دلوقتي، هرد عليك لما أصحى!"}
+    ban_limits = {}            # {chat_id: max_bans} - الحد الأقصى للحظر لكل جروب
+    admin_ban_count = {}       # {chat_id: {admin_id: count}} - عداد حظر كل مشرف
 
     # ══════════════════════════════════════════
     #         وظائف مساعدة مشتركة
@@ -578,9 +583,133 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             await reply_or_edit(event, "🔊 تم فك كتم المشرف!")
             return
 
+        # ════ رفع مشرف ════
+        if cmd2 == ".رفع مشرف":
+            if not event.is_reply:
+                await reply_or_edit(event, "⚠️ رد على رسالة العضو عشان ترفعه مشرف!")
+                return
+            title = " ".join(parts[2:]) if len(parts) > 2 else ""
+            reply = await event.get_reply_message()
+            target_id = reply.sender_id
+            try:
+                await client(EditAdminRequest(
+                    channel=event.chat_id,
+                    user_id=target_id,
+                    admin_rights=ChatAdminRights(
+                        change_info=False,       # ❌ تعديل معلومات المجموعة
+                        post_messages=True,      # ✅ نشر رسائل
+                        edit_messages=True,      # ✅ تعديل رسائل
+                        delete_messages=True,    # ✅ حذف رسائل
+                        ban_users=True,          # ✅ حظر أعضاء
+                        invite_users=True,       # ✅ دعوة أعضاء
+                        pin_messages=True,       # ✅ تثبيت رسائل
+                        add_admins=False,        # ❌ إضافة مشرفين
+                        anonymous=False,         # ❌ إخفاء
+                        manage_call=True,        # ✅ إدارة المكالمات
+                        other=True,
+                        manage_topics=True,
+                    ),
+                    rank=title
+                ))
+                target = await client.get_entity(target_id)
+                name = getattr(target, 'first_name', '') or getattr(target, 'username', str(target_id))
+                await reply_or_edit(event,
+                    f"✅ تم رفع **{name}** مشرفاً{f' بلقب **{title}**' if title else ''}!\n\n"
+                    f"📋 الصلاحيات:\n"
+                    f"✅ حذف رسائل | ✅ حظر أعضاء\n"
+                    f"✅ دعوة أعضاء | ✅ تثبيت رسائل\n"
+                    f"✅ تعديل رسائل | ✅ إدارة مكالمات\n"
+                    f"❌ تعديل المجموعة | ❌ إضافة مشرفين | ❌ الإخفاء",
+                    parse_mode='markdown'
+                )
+            except ChatAdminRequiredError:
+                await reply_or_edit(event, "❌ محتاج صلاحية إضافة مشرفين!")
+            except Exception as e:
+                await reply_or_edit(event, f"❌ خطأ: {e}")
+            return
+
+        # ════ تحديد حد الحظر للمشرفين ════
+        if cmd2 == ".حد حظر":
+            if not args or not parts[2:] or not parts[2].isdigit():
+                await reply_or_edit(event, "⚠️ الاستخدام: `.حد حظر <عدد>`\nمثال: `.حد حظر 3`")
+                return
+            limit = int(parts[2])
+            ban_limits[event.chat_id] = limit
+            if event.chat_id not in admin_ban_count:
+                admin_ban_count[event.chat_id] = {}
+            await reply_or_edit(event,
+                f"✅ تم تحديد الحد الأقصى للحظر بـ **{limit}** حظر لكل مشرف!\n"
+                f"⚠️ أي مشرف يتجاوز الحد هيتسحب منه الإشراف تلقائياً.",
+                parse_mode='markdown'
+            )
+            return
+
+        # ════ إلغاء حد الحظر ════
+        if cmd2 == ".الغ حد":
+            if event.chat_id in ban_limits:
+                del ban_limits[event.chat_id]
+            if event.chat_id in admin_ban_count:
+                del admin_ban_count[event.chat_id]
+            await reply_or_edit(event, "✅ تم إلغاء حد الحظر في هذا الجروب!")
+            return
+
     # ══════════════════════════════════════════
-    #    حذف رسائل المشرفين المكتومين
+    #    مراقبة حظر المشرفين
     # ══════════════════════════════════════════
+    @client.on(events.ChatAction(func=lambda e: e.user_kicked or e.user_left))
+    async def monitor_admin_bans(event):
+        chat_id = event.chat_id
+        if chat_id not in ban_limits:
+            return
+        try:
+            async for admin_event in client.iter_admin_log(chat_id, ban=True, limit=1):
+                banner_id = admin_event.user_id
+                if banner_id == owner_id:
+                    return
+                if chat_id not in admin_ban_count:
+                    admin_ban_count[chat_id] = {}
+                admin_ban_count[chat_id][banner_id] = admin_ban_count[chat_id].get(banner_id, 0) + 1
+                count = admin_ban_count[chat_id][banner_id]
+                limit = ban_limits[chat_id]
+                if count >= limit:
+                    try:
+                        await client(EditAdminRequest(
+                            channel=chat_id,
+                            user_id=banner_id,
+                            admin_rights=ChatAdminRights(
+                                change_info=False, post_messages=False, edit_messages=False,
+                                delete_messages=False, ban_users=False, invite_users=False,
+                                pin_messages=False, add_admins=False, anonymous=False,
+                                manage_call=False, other=False,
+                            ),
+                            rank=""
+                        ))
+                        try:
+                            banner = await client.get_entity(banner_id)
+                            banner_name = getattr(banner, 'first_name', '') or getattr(banner, 'username', str(banner_id))
+                            banner_mention = f"[{banner_name}](tg://user?id={banner_id})"
+                        except Exception:
+                            banner_mention = f"[مشرف](tg://user?id={banner_id})"
+                        try:
+                            owner = await client.get_entity(owner_id)
+                            owner_name = getattr(owner, 'first_name', '') or str(owner_id)
+                            owner_mention = f"[{owner_name}](tg://user?id={owner_id})"
+                        except Exception:
+                            owner_mention = f"[المالك](tg://user?id={owner_id})"
+                        msg = (
+                            f"⚠️ **تنبيه أمني** ⚠️\n\n"
+                            f"تم سحب إشراف {banner_mention}\n"
+                            f"السبب: تجاوز الحد الأقصى للحظر ({count}/{limit})\n\n"
+                            f"🔔 {owner_mention} تم إشعارك!"
+                        )
+                        await client.send_message(chat_id, msg, parse_mode='markdown')
+                        admin_ban_count[chat_id][banner_id] = 0
+                    except Exception as e:
+                        logging.error(f"❌ خطأ سحب الإشراف: {e}")
+                break
+        except Exception as e:
+            logging.error(f"❌ خطأ مراقبة الحظر: {e}")
+
     @client.on(events.NewMessage(incoming=True, func=lambda e: e.is_group))
     async def delete_muted_admin_msgs(event):
         if not muted_admins:
