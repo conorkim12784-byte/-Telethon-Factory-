@@ -39,20 +39,20 @@ COMMANDS_TEXT = """📌 **قائمة الأوامر** 📌
 `.فكحظر` — فك حظر عضو
 `.كتم` — تقييد العضو من الإرسال + حذف رسائله
 `.فككتم` — فك التقييد
-`.كتم_مشرف` — حذف رسائل مشرف تلقائياً
-`.فك_كتم_مشرف` — إيقاف حذف رسائل المشرف
+`.كتم مشرف` — حذف رسائل مشرف تلقائياً
+`.فك كتم مشرف` — إيقاف حذف رسائل المشرف
 
 ━━━━━━━━━━━━━━━━━━━━
 
 📢 **الإذاعة:**
-`.اذاعة_خاص <رسالة>` — إرسال لكل المحادثات الخاصة
-`.اذاعة_جروب <رسالة>` — إرسال لكل المجموعات
+`.اذاعة خاص <رسالة>` — إرسال لكل المحادثات الخاصة
+`.اذاعة جروب <رسالة>` — إرسال لكل المجموعات
 
 ━━━━━━━━━━━━━━━━━━━━
 
 📡 **متابعة القناة (كروت الشحن):**
-`.تتبع_قناة <@قناة_المصدر> <@قناة_الاستلام>` — بدء التتبع
-`.وقف_التتبع` — إيقاف التتبع
+`.تتبع قناة <@قناة_المصدر> <@قناة_الاستلام>` — بدء التتبع
+`.وقف التتبع` — إيقاف التتبع
 
 ━━━━━━━━━━━━━━━━━━━━
 
@@ -66,13 +66,14 @@ COMMANDS_TEXT = """📌 **قائمة الأوامر** 📌
 `.نايم` — تفعيل وضع النوم (رد تلقائي لكل من يكلمك)
 `.نايم <رسالة>` — نفس الأمر برسالة مخصصة
 `.صحيت` — إيقاف وضع النوم
-> ملاحظة: لو رددت على حد وإنت نايم، وضع النوم بيتعطل في محادثته بس
 
 ━━━━━━━━━━━━━━━━━━━━
 
 📁 **المجلدات:**
-`.مجلد_قنواتي` — يجمع قنواتك وجروباتك اللي إنت مالكها في مجلد واحد
-`.مجلد_قنواتي <اسم>` — نفس الأمر لكن بتختار اسم المجلد
+`.مجلد قنواتي` — يجمع قنواتك في مجلد
+`.مجلد جروباتي` — يجمع جروباتك في مجلد
+`.مجلد بوتاتي` — يجمع البوتات في مجلد
+> يمكن إضافة اسم مخصص: `.مجلد قنواتي اسم المجلد`
 
 ━━━━━━━━━━━━━━━━━━━━
 """
@@ -249,6 +250,10 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
         cmd = parts[0].lower()
         args = parts[1:]
 
+        # أوامر متعددة الكلمات
+        cmd2 = " ".join(parts[:2]).lower() if len(parts) >= 2 else ""
+        cmd3 = " ".join(parts[:3]).lower() if len(parts) >= 3 else ""
+
         # ════ قائمة الأوامر ════
         if cmd in (".الاوامر", ".اوامري"):
             await reply_or_edit(event, COMMANDS_TEXT, parse_mode='markdown')
@@ -274,9 +279,10 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             return
 
         # ════ إذاعة خاص ════
-        if cmd == ".اذاعة_خاص":
+        if cmd2 == ".اذاعة خاص":
+            args = parts[2:]
             if not args:
-                await reply_or_edit(event, "⚠️ الاستخدام: `.اذاعة_خاص <الرسالة>`")
+                await reply_or_edit(event, "⚠️ الاستخدام: `.اذاعة خاص <الرسالة>`")
                 return
             msg = " ".join(args)
             count = 0
@@ -293,9 +299,10 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             return
 
         # ════ إذاعة جروب ════
-        if cmd == ".اذاعة_جروب":
+        if cmd2 == ".اذاعة جروب":
+            args = parts[2:]
             if not args:
-                await reply_or_edit(event, "⚠️ الاستخدام: `.اذاعة_جروب <الرسالة>`")
+                await reply_or_edit(event, "⚠️ الاستخدام: `.اذاعة جروب <الرسالة>`")
                 return
             msg = " ".join(args)
             count = 0
@@ -312,18 +319,17 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             return
 
         # ════ تتبع قناة ════
-        if cmd == ".تتبع_قناة":
+        if cmd2 == ".تتبع قناة":
+            args = parts[2:]
             if len(args) < 2:
-                await reply_or_edit(event, "⚠️ الاستخدام: `.تتبع_قناة @قناة_المصدر @قناة_الاستلام`")
+                await reply_or_edit(event, "⚠️ الاستخدام: `.تتبع قناة @قناة_المصدر @قناة_الاستلام`")
                 return
             try:
                 src = await client.get_entity(args[0].lstrip('@'))
                 dst = await client.get_entity(args[1].lstrip('@'))
-                # normalize IDs عشان يتطابق مع event.chat_id
                 src_id = src.id
                 dst_id = dst.id
                 tracked_channels[src_id] = dst_id
-                # كمان نحفظ بصيغة -100 لو القناة
                 if hasattr(src, 'access_hash'):
                     tracked_channels[int(f"-100{src_id}")] = dst_id
                 await reply_or_edit(event,
@@ -337,97 +343,127 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             return
 
         # ════ وقف التتبع ════
-        if cmd == ".وقف_التتبع":
+        if cmd2 == ".وقف التتبع":
             tracked_channels.clear()
             await reply_or_edit(event, "🛑 تم إيقاف تتبع القنوات!")
             return
 
-        # ════ مجلد قنواتي ════
-        if cmd == ".مجلد_قنواتي":
-            folder_name = " ".join(args) if args else "قنواتي ومجموعاتي"
-            await reply_or_edit(event, f"📁 جاري جمع قنواتك وجروباتك...\n⏳ استنى ثواني...")
+        # ══════════════════════════════════════════
+        #         دالة مساعدة لإنشاء المجلد
+        # ══════════════════════════════════════════
+        async def make_folder(folder_name, peers, names):
+            from telethon.tl.types import (
+                DialogFilter as TLDialogFilter,
+                TextWithEntities
+            )
+            if not peers:
+                return None
             try:
-                from telethon.tl.types import (
-                    Channel, Chat,
-                    InputPeerChannel, InputPeerChat,
-                    ChannelParticipantCreator,
-                    DialogFilter as TLDialogFilter,
-                    TextWithEntities
-                )
+                existing_filters = await client(GetDialogFiltersRequest())
+                used_ids = [f.id for f in existing_filters.filters if hasattr(f, 'id')]
+                new_id = max(used_ids, default=1) + 1
+                if new_id > 255:
+                    new_id = 2
+            except Exception:
+                new_id = 10
+
+            dialog_filter = TLDialogFilter(
+                id=new_id,
+                title=TextWithEntities(text=folder_name, entities=[]),
+                pinned_peers=[],
+                include_peers=peers,
+                exclude_peers=[],
+                contacts=False,
+                non_contacts=False,
+                groups=False,
+                broadcasts=False,
+                bots=False,
+                exclude_muted=False,
+                exclude_read=False,
+                exclude_archived=False,
+            )
+            await client(UpdateDialogFilterRequest(id=new_id, filter=dialog_filter))
+            names_text = "\n".join(names[:20])
+            extra = f"\n... و{len(names) - 20} أكتر" if len(names) > 20 else ""
+            return f"📊 العدد: **{len(peers)}**\n\n{names_text}{extra}"
+
+        # ════ مجلد قنواتي ════
+        if cmd2 == ".مجلد قنواتي":
+            folder_name = " ".join(parts[2:]) if len(parts) > 2 else "قنواتي 📢"
+            await reply_or_edit(event, "📁 جاري جمع قنواتك...\n⏳ استنى ثواني...")
+            try:
+                from telethon.tl.types import Channel, InputPeerChannel, ChannelParticipantCreator
                 from telethon.tl.functions.channels import GetParticipantRequest as GetChannelParticipant
-
-                owned_peers = []
-                owned_names = []
-
+                peers, names = [], []
                 async for dialog in client.iter_dialogs():
                     entity = dialog.entity
-                    try:
-                        if isinstance(entity, Channel):
-                            try:
-                                part = await client(GetChannelParticipant(
-                                    channel=entity,
-                                    participant=me
-                                ))
-                                if isinstance(part.participant, ChannelParticipantCreator):
-                                    owned_peers.append(InputPeerChannel(entity.id, entity.access_hash))
-                                    owned_names.append(f"📢 {entity.title}")
-                            except Exception:
-                                pass
-                        elif isinstance(entity, Chat):
-                            if getattr(entity, 'creator', False):
-                                owned_peers.append(InputPeerChat(entity.id))
-                                owned_names.append(f"👥 {entity.title}")
-                    except Exception:
-                        pass
-
-                if not owned_peers:
-                    await reply_or_edit(event, "❌ مش لاقي أي قناة أو جروب إنت مالكها!")
+                    if isinstance(entity, Channel) and not entity.megagroup:
+                        try:
+                            part = await client(GetChannelParticipant(channel=entity, participant=me))
+                            if isinstance(part.participant, ChannelParticipantCreator):
+                                peers.append(InputPeerChannel(entity.id, entity.access_hash))
+                                names.append(f"📢 {entity.title}")
+                        except Exception:
+                            pass
+                if not peers:
+                    await reply_or_edit(event, "❌ مش لاقي أي قناة إنت مالكها!")
                     return
+                result = await make_folder(folder_name, peers, names)
+                await reply_or_edit(event, f"✅ تم إنشاء مجلد **{folder_name}**!\n\n{result}", parse_mode='markdown')
+            except Exception as e:
+                await reply_or_edit(event, f"❌ حصل خطأ: {e}")
+            return
 
-                # نجيب ID جديد للمجلد
-                try:
-                    existing_filters = await client(GetDialogFiltersRequest())
-                    used_ids = [
-                        f.id for f in existing_filters.filters
-                        if hasattr(f, 'id')
-                    ]
-                    new_id = max(used_ids, default=1) + 1
-                    if new_id > 255:
-                        new_id = 2
-                except Exception:
-                    new_id = 10
+        # ════ مجلد جروباتي ════
+        if cmd2 == ".مجلد جروباتي":
+            folder_name = " ".join(parts[2:]) if len(parts) > 2 else "جروباتي 👥"
+            await reply_or_edit(event, "📁 جاري جمع جروباتك...\n⏳ استنى ثواني...")
+            try:
+                from telethon.tl.types import Channel, Chat, InputPeerChannel, InputPeerChat, ChannelParticipantCreator
+                from telethon.tl.functions.channels import GetParticipantRequest as GetChannelParticipant
+                peers, names = [], []
+                async for dialog in client.iter_dialogs():
+                    entity = dialog.entity
+                    # سوبرجروبات
+                    if isinstance(entity, Channel) and entity.megagroup:
+                        try:
+                            part = await client(GetChannelParticipant(channel=entity, participant=me))
+                            if isinstance(part.participant, ChannelParticipantCreator):
+                                peers.append(InputPeerChannel(entity.id, entity.access_hash))
+                                names.append(f"👥 {entity.title}")
+                        except Exception:
+                            pass
+                    # جروبات عادية
+                    elif isinstance(entity, Chat):
+                        if getattr(entity, 'creator', False):
+                            peers.append(InputPeerChat(entity.id))
+                            names.append(f"👥 {entity.title}")
+                if not peers:
+                    await reply_or_edit(event, "❌ مش لاقي أي جروب إنت مالكه!")
+                    return
+                result = await make_folder(folder_name, peers, names)
+                await reply_or_edit(event, f"✅ تم إنشاء مجلد **{folder_name}**!\n\n{result}", parse_mode='markdown')
+            except Exception as e:
+                await reply_or_edit(event, f"❌ حصل خطأ: {e}")
+            return
 
-                # نعمل المجلد - title محتاج TextWithEntities في النسخ الجديدة
-                dialog_filter = TLDialogFilter(
-                    id=new_id,
-                    title=TextWithEntities(text=folder_name, entities=[]),
-                    pinned_peers=[],
-                    include_peers=owned_peers,
-                    exclude_peers=[],
-                    contacts=False,
-                    non_contacts=False,
-                    groups=False,
-                    broadcasts=False,
-                    bots=False,
-                    exclude_muted=False,
-                    exclude_read=False,
-                    exclude_archived=False,
-                )
-
-                await client(UpdateDialogFilterRequest(
-                    id=new_id,
-                    filter=dialog_filter
-                ))
-
-                names_text = "\n".join(owned_names[:20])
-                extra = f"\n... و{len(owned_names) - 20} أكتر" if len(owned_names) > 20 else ""
-                await reply_or_edit(
-                    event,
-                    f"✅ تم إنشاء المجلد **{folder_name}** بنجاح!\n\n"
-                    f"📊 عدد المحادثات: **{len(owned_peers)}**\n\n"
-                    f"{names_text}{extra}",
-                    parse_mode='markdown'
-                )
+        # ════ مجلد بوتاتي ════
+        if cmd2 == ".مجلد بوتاتي":
+            folder_name = " ".join(parts[2:]) if len(parts) > 2 else "بوتاتي 🤖"
+            await reply_or_edit(event, "📁 جاري جمع البوتات...\n⏳ استنى ثواني...")
+            try:
+                from telethon.tl.types import User, InputPeerUser
+                peers, names = [], []
+                async for dialog in client.iter_dialogs():
+                    entity = dialog.entity
+                    if isinstance(entity, User) and entity.bot:
+                        peers.append(InputPeerUser(entity.id, entity.access_hash))
+                        names.append(f"🤖 {entity.first_name or entity.username or str(entity.id)}")
+                if not peers:
+                    await reply_or_edit(event, "❌ مش لاقي أي بوت!")
+                    return
+                result = await make_folder(folder_name, peers, names)
+                await reply_or_edit(event, f"✅ تم إنشاء مجلد **{folder_name}**!\n\n{result}", parse_mode='markdown')
             except Exception as e:
                 await reply_or_edit(event, f"❌ حصل خطأ: {e}")
             return
@@ -483,7 +519,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             return
 
         # ════ كتم (تقييد + حذف رسائله) ════
-        if cmd == ".كتم" and not text.startswith(".كتم_مشرف"):
+        if cmd == ".كتم" and cmd2 != ".كتم مشرف":
             target_id = await resolve_target(event, args)
             if not target_id:
                 return
@@ -518,7 +554,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             return
 
         # ════ كتم مشرف (حذف رسائله تلقائياً) ════
-        if cmd == ".كتم_مشرف":
+        if cmd2 == ".كتم مشرف":
             if not event.is_reply:
                 await reply_or_edit(event, "⚠️ رد على رسالة المشرف عشان تكتمه!")
                 return
@@ -531,7 +567,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             return
 
         # ════ فك كتم مشرف ════
-        if cmd == ".فك_كتم_مشرف":
+        if cmd3 == ".فك كتم مشرف":
             if not event.is_reply:
                 await reply_or_edit(event, "⚠️ رد على رسالة المشرف عشان تفك كتمه!")
                 return
