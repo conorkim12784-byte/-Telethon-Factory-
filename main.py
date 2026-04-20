@@ -1831,8 +1831,8 @@ async def main():
 
     app.add_handler(conv_handler)
     app.add_handler(CallbackQueryHandler(admin_button_handler))
-    app.add_handler(CommandHandler("هدية", collect_gifts_handler))
-    app.add_handler(CommandHandler("تحويل", collect_transfer_handler))
+    app.add_handler(MessageHandler(filters.Regex(r'^/هدية$'), collect_gifts_handler))
+    app.add_handler(MessageHandler(filters.Regex(r'^/تحويل$'), collect_transfer_handler))
     app.add_handler(MessageHandler(filters.Regex(r'(?i)^سورس$'), source_handler))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, message_handler))
 
