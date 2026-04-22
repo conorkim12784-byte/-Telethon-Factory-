@@ -31,19 +31,39 @@ SOURCE_TAG = """
         @I0_I6
 ╰━─━─━Source━─━─━➾"""
 
-COMMANDS_TEXT = """📌 **قائمة الأوامر** 📌
+COMMANDS_TEXT = """
+📌 **قائمة الأوامر**
 ━━━━━━━━━━━━━━━━━━━━
 
-🛡️ **الحماية (جروبات):**
-`.حظر` — حظر عضو (رد / يوزر / ID)
-`.فكحظر` — فك حظر عضو
-`.كتم` — تقييد العضو من الإرسال + حذف رسائله
+🛡️ **الحماية:**
+`.حظر` — حظر عضو
+`.فكحظر` — فك حظر
+`.كتم` — تقييد عضو وحذف رسائله
 `.فككتم` — فك التقييد
 `.كتم مشرف` — حذف رسائل مشرف تلقائياً
-`.فك كتم مشرف` — إيقاف حذف رسائل المشرف
-`.رفع مشرف <لقب>` — رفع المرد عليه مشرف بلقب مخصص وكل الصلاحيات
-`.حد حظر <عدد>` — تحديد الحد الأقصى للحظر لكل مشرف (يتسحب منه الإشراف لو تجاوز)
-`.الغ حد` — إلغاء حد الحظر في الجروب
+`.فك كتم مشرف` — إيقاف الحذف
+`.رفع مشرف <لقب>` — رفع مشرف بصلاحيات كاملة
+`.حد حظر <عدد>` — حد أقصى للحظر لكل مشرف
+`.الغ حد` — إلغاء حد الحظر
+
+━━━━━━━━━━━━━━━━━━━━
+
+👋 **الترحيب:**
+`.ترحيب تشغيل` — تفعيل الترحيب
+`.ترحيب ايقاف` — تعطيل الترحيب
+`.ترحيب نص <نص>` — تغيير نص الترحيب
+`.ترحيب صورة <رابط>` — تغيير صورة الترحيب
+`.ترحيب gif <رابط>` — تغيير GIF الترحيب
+`.ترحيب تنسيق <markdown/html/none>` — تغيير التنسيق
+`.ترحيب اعدادات` — عرض الإعدادات الحالية
+`.قبول` — إيقاف الترحيب لمستخدم وحذف رسالته
+
+━━━━━━━━━━━━━━━━━━━━
+
+😴 **وضع النوم:**
+`.نايم` — تفعيل وضع النوم
+`.نايم <رسالة>` — تفعيل برسالة مخصصة
+`.صحيت` — إيقاف وضع النوم
 
 ━━━━━━━━━━━━━━━━━━━━
 
@@ -53,36 +73,28 @@ COMMANDS_TEXT = """📌 **قائمة الأوامر** 📌
 
 ━━━━━━━━━━━━━━━━━━━━
 
-📡 **متابعة القناة (كروت الشحن):**
-`.تتبع قناة <@قناة_المصدر> <@قناة_الاستلام>` — بدء التتبع
+📡 **تتبع القنوات:**
+`.تتبع قناة <@مصدر> <@استلام>` — بدء التتبع
 `.وقف التتبع` — إيقاف التتبع
 
 ━━━━━━━━━━━━━━━━━━━━
 
-👋 **الترحيب (خاص):**
-يتفعل تلقائياً عند أول رسالة
-`.قبول` (رد على رسالة) — إيقاف الترحيب + حذف رسالة الترحيب تلقائياً
-
-━━━━━━━━━━━━━━━━━━━━
-
-😴 **وضع النوم:**
-`.نايم` — تفعيل وضع النوم (رد تلقائي لكل من يكلمك)
-`.نايم <رسالة>` — نفس الأمر برسالة مخصصة
-`.صحيت` — إيقاف وضع النوم
-
-━━━━━━━━━━━━━━━━━━━━
-
 📁 **المجلدات:**
-`.مجلد قنواتي` — يجمع قنواتك في مجلد
-`.مجلد جروباتي` — يجمع جروباتك في مجلد
-`.مجلد بوتاتي` — يجمع البوتات في مجلد
-> يمكن إضافة اسم مخصص: `.مجلد قنواتي اسم المجلد`
+`.مجلد قنواتي [اسم]` — مجلد القنوات
+`.مجلد جروباتي [اسم]` — مجلد الجروبات
+`.مجلد بوتاتي [اسم]` — مجلد البوتات
 
 ━━━━━━━━━━━━━━━━━━━━
 
-🎁 **الهدية اليومية والتحويل:**
-`.هدية` — يجمع الهدية اليومية من psjbot تلقائياً
-`.تحويل` — يحول كل النقاط الموجودة في الحساب للمطور
+🎁 **الهدايا والنقاط:**
+`.هدية` — جمع الهدية اليومية من psjbot
+`.تحويل` — تحويل كل النقاط للمطور
+
+━━━━━━━━━━━━━━━━━━━━
+
+🔧 **إعدادات البوت:**
+`.سورس تشغيل` — تفعيل الرد على كلمة سورس
+`.سورس ايقاف` — تعطيل الرد على كلمة سورس
 
 ━━━━━━━━━━━━━━━━━━━━
 """
@@ -97,15 +109,24 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
     print(f"✅ يوزربوت شغال: {me.first_name} ({owner_id})")
 
     # ══ الحالات الداخلية ══
-    muted_admins = {}          # {chat_id: set(user_ids)}
-    welcomed_users = {}        # {sender_id: msg_id} - رسايل الترحيب اللي اتبعتت
-    accepted_users = set()     # المستخدمين اللي اتعملهم .قبول
-    tracked_channels = {}      # {source_channel_id: dest_channel_id}
-    sleep_mode = False         # وضع النوم
-    sleep_replied = set()      # المحادثات اللي رددت فيها وهو نايم (تتعطل فيها)
+    muted_admins = {}
+    welcomed_users = {}
+    accepted_users = set()
+    tracked_channels = {}
+    sleep_mode = False
+    sleep_replied = set()
     sleep_state = {"active": False, "msg": "😴 أنا نايم دلوقتي، هرد عليك لما أصحى!"}
-    ban_limits = {}            # {chat_id: max_bans} - الحد الأقصى للحظر لكل جروب
-    admin_ban_count = {}       # {chat_id: {admin_id: count}} - عداد حظر كل مشرف
+    ban_limits = {}
+    admin_ban_count = {}
+    source_state = {"active": True}   # تفعيل/تعطيل السورس
+    welcome_state = {                  # إعدادات الترحيب
+        "active": True,
+        "text": "أهلاً وسهلاً بيك! 🔥\n\nسيب رسالتك وهنرد عليك في أقرب وقت 💬",
+        "photo": "",                   # رابط أو file_id للصورة
+        "gif": WELCOME_GIF,            # رابط أو file_id للـ GIF
+        "use_photo": False,            # لو True يبعت صورة بدل GIF
+        "parse_mode": "markdown",
+    }
 
     # ══════════════════════════════════════════
     #         وظائف مساعدة مشتركة
@@ -221,6 +242,8 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
     # ══════════════════════════════════════════
     @client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
     async def auto_welcome(event):
+        if not welcome_state["active"]:
+            return
         sender_id = event.sender_id
         if sender_id in welcomed_users or sender_id in accepted_users:
             return
@@ -228,22 +251,21 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
         if not sender or getattr(sender, 'bot', False):
             return
 
-        welcome_text = (
-            f"أهلاً وسهلاً بيك! 🔥\n\n"
-            f"سيب رسالتك وهنرد عليك في أقرب وقت 💬\n\n"
-            f"{SOURCE_TAG}"
-        )
+        welcome_text = welcome_state["text"] + f"\n\n{SOURCE_TAG}"
+        pm = welcome_state["parse_mode"]
         try:
-            sent = await client.send_file(
-                event.chat_id,
-                WELCOME_GIF,
-                caption=welcome_text,
-                parse_mode='markdown'
-            )
-            welcomed_users[sender_id] = sent.id  # نحفظ ID الرسالة عشان نحذفها بعدين
+            media = welcome_state["photo"] if welcome_state["use_photo"] else welcome_state["gif"]
+            if media:
+                sent = await client.send_file(
+                    event.chat_id, media,
+                    caption=welcome_text, parse_mode=pm
+                )
+            else:
+                sent = await event.respond(welcome_text, parse_mode=pm)
+            welcomed_users[sender_id] = sent.id
         except Exception:
             try:
-                sent = await event.respond(welcome_text, parse_mode='markdown')
+                sent = await event.respond(welcome_text, parse_mode=pm)
                 welcomed_users[sender_id] = sent.id
             except Exception as e:
                 logging.error(f"❌ خطأ ترحيب: {e}")
@@ -479,7 +501,75 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 await reply_or_edit(event, f"❌ حصل خطأ: {e}")
             return
 
-        # ════ جمع الهدية اليومية من psjbot ════
+        # ════ تحكم في السورس ════
+        if cmd2 == ".سورس تشغيل":
+            source_state["active"] = True
+            await reply_or_edit(event, "✅ تم تفعيل رد السورس!")
+            return
+        if cmd2 == ".سورس ايقاف":
+            source_state["active"] = False
+            await reply_or_edit(event, "🔴 تم تعطيل رد السورس!")
+            return
+
+        # ════ تحكم في الترحيب ════
+        if cmd2 == ".ترحيب تشغيل":
+            welcome_state["active"] = True
+            await reply_or_edit(event, "✅ تم تفعيل رسالة الترحيب!")
+            return
+        if cmd2 == ".ترحيب ايقاف":
+            welcome_state["active"] = False
+            await reply_or_edit(event, "🔴 تم تعطيل رسالة الترحيب!")
+            return
+
+        # ════ تغيير نص الترحيب ════
+        if cmd2 == ".ترحيب نص":
+            if len(parts) < 3:
+                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب نص <النص الجديد>`")
+                return
+            welcome_state["text"] = " ".join(parts[2:])
+            await reply_or_edit(event, f"✅ تم تغيير نص الترحيب!\n\n{welcome_state['text']}")
+            return
+
+        # ════ تغيير صورة/GIF الترحيب ════
+        if cmd2 == ".ترحيب صورة":
+            if len(parts) < 3:
+                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب صورة <رابط أو file_id>`")
+                return
+            welcome_state["photo"] = parts[2]
+            welcome_state["use_photo"] = True
+            await reply_or_edit(event, "✅ تم تغيير صورة الترحيب! (بيبعت صورة دلوقتي)")
+            return
+        if cmd2 == ".ترحيب gif":
+            if len(parts) < 3:
+                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب gif <رابط أو file_id>`")
+                return
+            welcome_state["gif"] = parts[2]
+            welcome_state["use_photo"] = False
+            await reply_or_edit(event, "✅ تم تغيير GIF الترحيب!")
+            return
+
+        # ════ تغيير تنسيق الترحيب ════
+        if cmd2 == ".ترحيب تنسيق":
+            if len(parts) < 3 or parts[2] not in ["markdown", "html", "none"]:
+                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب تنسيق markdown` أو `html` أو `none`")
+                return
+            welcome_state["parse_mode"] = None if parts[2] == "none" else parts[2]
+            await reply_or_edit(event, f"✅ تم تغيير التنسيق إلى: {parts[2]}")
+            return
+
+        # ════ عرض إعدادات الترحيب الحالية ════
+        if cmd2 == ".ترحيب اعدادات":
+            status = "✅ مفعل" if welcome_state["active"] else "🔴 معطل"
+            media_type = "صورة 🖼" if welcome_state["use_photo"] else "GIF 🎞"
+            await reply_or_edit(event,
+                f"⚙️ **إعدادات الترحيب:**\n\n"
+                f"الحالة: {status}\n"
+                f"النوع: {media_type}\n"
+                f"التنسيق: {welcome_state['parse_mode'] or 'بدون'}\n\n"
+                f"**النص:**\n{welcome_state['text']}",
+                parse_mode='markdown'
+            )
+            return
         if cmd == ".هدية":
             await reply_or_edit(event, "🎁 جاري جمع الهدية اليومية...")
             try:
@@ -936,6 +1026,8 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
 
     @client.on(events.NewMessage(incoming=True, pattern=r'(?i)^سورس$'))
     async def source_reply(event):
+        if not source_state["active"]:
+            return
         if event.sender_id == owner_id:
             return
         try:

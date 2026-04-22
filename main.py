@@ -680,8 +680,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if last_msg_id:
         context.user_data["last_message_id"] = last_msg_id
 
-    # ✅ حذف رسالة /start اللي المستخدم بعتها
-    if update.message:
+    # ✅ حذف رسالة /start بس في الجروبات مش في الخاص
+    if update.message and update.message.chat.type != "private":
         try:
             await update.message.delete()
         except Exception:
@@ -881,46 +881,40 @@ async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         await client.send_code_request(phone)
-        await send_clean(context, user_id, f"{DECOR_CODE} تم إرسال كود التحقق!\n\n")
+        await send_clean(context, user_id,
+            f"{DECOR_CODE} تم إرسال كود التحقق!\n\n"
+            f"📲 أدخل الكود مع مسافة بين كل رقم\n"
+            f"مثال: `1 2 3 4 5`")
         return CODE_STATE
     except Exception as e:
         await send_clean(context, user_id, f"{DECOR_ERROR} خطأ في إرسال الكود: {str(e)}\n\nحاول مرة أخرى بإرسال /start")
         return ConversationHandler.END
 
 async def get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """رقم رقم عشان تيليجرام مش بيحجبه"""
+    """الكود كامل بمسافات بين الأرقام"""
     user_id = update.effective_user.id
 
     if not config.get("BOT_ENABLED", True) and user_id != ADMIN_ID:
         return ConversationHandler.END
 
-    digit = update.message.text.strip()
+    raw = update.message.text.strip()
 
-    # ✅ حذف رسالة الرقم فوراً
+    # ✅ حذف رسالة الكود فوراً
     try:
         await update.message.delete()
     except Exception:
         pass
 
-    if not digit.isdigit() or len(digit) != 1:
-        await send_clean(context, user_id, f"{DECOR_ERROR} أدخل رقم واحد بس!")
+    # إزالة المسافات وتحقق إن الكود 5 أرقام
+    code = raw.replace(" ", "").replace("-", "")
+    if not code.isdigit() or len(code) != 5:
+        await send_clean(context, user_id,
+            f"{DECOR_ERROR} الكود غلط!\n\n"
+            f"📲 أدخل الكود مع مسافة بين كل رقم\n"
+            f"مثال: `1 2 3 4 5`")
         return CODE_STATE
 
     store = get_user_store(user_id)
-    if 'code_digits' not in store:
-        store['code_digits'] = []
-    store['code_digits'].append(digit)
-
-    # لو لسه ما اكتملناش
-    if len(store['code_digits']) < 5:
-        current = len(store['code_digits'])
-        filled = "●" * current
-        empty = "○" * (5 - current)
-        await send_clean(context, user_id, f"{DECOR_CODE} {filled}{empty} ({current}/5)\n\nأدخل الرقم التالي:")
-        return CODE_STATE
-
-    code = "".join(store['code_digits'])
-    store['code_digits'] = []  # مسح بعد الاستخدام
     client = store['client']
     phone = store['phone']
     session_file = os.path.join(SESSIONS_DIR, f"{phone.replace('+', '')}.session")
@@ -936,12 +930,15 @@ async def get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return PASSWORD_STATE
     except Exception as e:
         error_text = str(e)
-        # ✅ لو الكود انتهى، نبعت كود جديد تلقائياً
         if "expired" in error_text.lower() or "PHONE_CODE_EXPIRED" in error_text:
             try:
                 store = get_user_store(user_id)
                 await store['client'].send_code_request(store['phone'])
-                await send_clean(context, user_id, f"⏰ الكود انتهت صلاحيته!\n\n{DECOR_CODE} تم إرسال كود جديد تلقائياً\n\n📲 أدخل الكود الجديد كامل مرة واحدة:")
+                await send_clean(context, user_id,
+                    f"⏰ الكود انتهت صلاحيته!\n\n"
+                    f"{DECOR_CODE} تم إرسال كود جديد\n\n"
+                    f"📲 أدخل الكود مع مسافة بين كل رقم\n"
+                    f"مثال: `1 2 3 4 5`")
                 return CODE_STATE
             except Exception:
                 msg = await context.bot.send_message(
@@ -951,7 +948,6 @@ async def get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context.user_data["last_message_id"] = msg.message_id
                 return ConversationHandler.END
 
-        # أي خطأ تاني مع زر إعادة المحاولة
         keyboard = [[InlineKeyboardButton("🔄 إعادة المحاولة", callback_data="start_now")]]
         msg = await context.bot.send_message(
             chat_id=user_id,
@@ -1045,9 +1041,7 @@ async def finalize_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
 
         await send_clean(context, chat_id,
-            f"{DECOR_SUCCESS} تم التنصيب بنجاح! ✨\n\n"
-            f"📌 لتفعيل التخزين أرسل من حسابك:\n"
-            f"`.تخزين <لينك أو ID المجموعة>`",
+            f"{DECOR_SUCCESS} تم التنصيب بنجاح! ✨",
             parse_mode='Markdown')
         clear_user_store(user_id)
         return ConversationHandler.END
