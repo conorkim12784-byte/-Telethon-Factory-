@@ -36,13 +36,14 @@ COMMANDS_TEXT = """
 ━━━━━━━━━━━━━━━━━━━━
 
 🛡️ **الحماية:**
-`.حظر` — حظر عضو
-`.فكحظر` — فك حظر
+`.حظر` — حظر عضو (رد / @يوزر / ID)
+`.فكحظر` — فك حظر (رد / @يوزر / ID)
 `.كتم` — تقييد عضو وحذف رسائله
 `.فككتم` — فك التقييد
-`.كتم مشرف` — حذف رسائل مشرف تلقائياً
-`.فك كتم مشرف` — إيقاف الحذف
-`.رفع مشرف <لقب>` — رفع مشرف بصلاحيات كاملة
+`.كتم مشرف` — كتم مشرف (رد / @يوزر / ID)
+`.فك كتم مشرف` — فك كتم مشرف (رد / @يوزر / ID)
+`.رفع مشرف @يوزر <لقب>` — رفع مشرف بصلاحيات كاملة
+`.تنزيل كل المشرفين` — إزالة إشراف كل المشرفين اللي إنت رفعتهم
 `.حد حظر <عدد>` — حد أقصى للحظر لكل مشرف
 `.الغ حد` — إلغاء حد الحظر
 
@@ -55,6 +56,10 @@ COMMANDS_TEXT = """
 `.ترحيب صورة <رابط>` — تغيير صورة الترحيب
 `.ترحيب gif <رابط>` — تغيير GIF الترحيب
 `.ترحيب تنسيق <markdown/html/none>` — تغيير التنسيق
+`.ترحيب زر سورس` — إظهار زر سورس تلاشاني
+`.ترحيب زر سورس ايقاف` — إخفاء زر سورس تلاشاني
+`.ترحيب زر اضف نص | رابط` — إضافة زر مخصص
+`.ترحيب زر شيل` — إزالة الزر المخصص
 `.ترحيب اعدادات` — عرض الإعدادات الحالية
 `.قبول` — إيقاف الترحيب لمستخدم وحذف رسالته
 
@@ -119,13 +124,15 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
     ban_limits = {}
     admin_ban_count = {}
     source_state = {"active": True}   # تفعيل/تعطيل السورس
-    welcome_state = {                  # إعدادات الترحيب
+    welcome_state = {
         "active": True,
         "text": "أهلاً وسهلاً بيك! 🔥\n\nسيب رسالتك وهنرد عليك في أقرب وقت 💬",
-        "photo": "",                   # رابط أو file_id للصورة
-        "gif": WELCOME_GIF,            # رابط أو file_id للـ GIF
-        "use_photo": False,            # لو True يبعت صورة بدل GIF
+        "photo": "",
+        "gif": WELCOME_GIF,
+        "use_photo": False,
         "parse_mode": "markdown",
+        "btn_source": {"text": "سـورس تـلاشاني 📢", "url": "https://t.me/FY_TF", "active": True},
+        "btn_custom": {"text": "", "url": "", "active": False},
     }
 
     # ══════════════════════════════════════════
@@ -253,15 +260,37 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
 
         welcome_text = welcome_state["text"] + f"\n\n{SOURCE_TAG}"
         pm = welcome_state["parse_mode"]
+
+        # بناء الأزرار
+        btn_row = []
+        if welcome_state["btn_custom"]["active"] and welcome_state["btn_custom"]["url"]:
+            from telethon.tl.types import KeyboardButtonUrl
+            btn_row.append(KeyboardButtonUrl(
+                text=welcome_state["btn_custom"]["text"] or "🔗 رابط",
+                url=welcome_state["btn_custom"]["url"]
+            ))
+        if welcome_state["btn_source"]["active"]:
+            from telethon.tl.types import KeyboardButtonUrl
+            btn_row.append(KeyboardButtonUrl(
+                text=welcome_state["btn_source"]["text"],
+                url=welcome_state["btn_source"]["url"]
+            ))
+
+        buttons = [btn_row] if btn_row else None
+
         try:
             media = welcome_state["photo"] if welcome_state["use_photo"] else welcome_state["gif"]
             if media:
                 sent = await client.send_file(
                     event.chat_id, media,
-                    caption=welcome_text, parse_mode=pm
+                    caption=welcome_text, parse_mode=pm,
+                    buttons=buttons
                 )
             else:
-                sent = await event.respond(welcome_text, parse_mode=pm)
+                sent = await client.send_message(
+                    event.chat_id, welcome_text,
+                    parse_mode=pm, buttons=buttons
+                )
             welcomed_users[sender_id] = sent.id
         except Exception:
             try:
@@ -282,10 +311,9 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
         parts = text.split()
         cmd = parts[0].lower()
         args = parts[1:]
-
-        # أوامر متعددة الكلمات
         cmd2 = " ".join(parts[:2]).lower() if len(parts) >= 2 else ""
         cmd3 = " ".join(parts[:3]).lower() if len(parts) >= 3 else ""
+        cmd4 = " ".join(parts[:4]).lower() if len(parts) >= 4 else ""
 
         # ════ قائمة الأوامر ════
         if cmd in (".الاوامر", ".اوامري"):
@@ -557,15 +585,60 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             await reply_or_edit(event, f"✅ تم تغيير التنسيق إلى: {parts[2]}")
             return
 
+        # ════ تغيير تنسيق الترحيب ════
+        if cmd2 == ".ترحيب تنسيق":
+            if len(parts) < 3 or parts[2] not in ["markdown", "html", "none"]:
+                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب تنسيق markdown` أو `html` أو `none`")
+                return
+            welcome_state["parse_mode"] = None if parts[2] == "none" else parts[2]
+            await reply_or_edit(event, f"✅ تم تغيير التنسيق إلى: {parts[2]}")
+            return
+
+        # ════ تحكم في زر السورس ════
+        if cmd3 == ".ترحيب زر سورس":
+            if cmd4 == ".ترحيب زر سورس ايقاف":
+                welcome_state["btn_source"]["active"] = False
+                await reply_or_edit(event, "🔴 تم إخفاء زر سورس تلاشاني من الترحيب!")
+            else:
+                welcome_state["btn_source"]["active"] = True
+                await reply_or_edit(event, "✅ تم إظهار زر سورس تلاشاني في الترحيب!")
+            return
+
+        # ════ إضافة/تعديل زر مخصص ════
+        if cmd3 == ".ترحيب زر اضف":
+            rest = " ".join(parts[3:])
+            if "|" not in rest:
+                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب زر اضف نص الزر | https://رابط`")
+                return
+            btn_text, btn_url = rest.split("|", 1)
+            welcome_state["btn_custom"]["text"] = btn_text.strip()
+            welcome_state["btn_custom"]["url"] = btn_url.strip()
+            welcome_state["btn_custom"]["active"] = True
+            await reply_or_edit(event, f"✅ تم إضافة الزر!\n\n🔘 {btn_text.strip()}\n🔗 {btn_url.strip()}")
+            return
+
+        # ════ إزالة الزر المخصص ════
+        if cmd3 == ".ترحيب زر شيل":
+            welcome_state["btn_custom"]["active"] = False
+            welcome_state["btn_custom"]["text"] = ""
+            welcome_state["btn_custom"]["url"] = ""
+            await reply_or_edit(event, "✅ تم إزالة الزر المخصص من الترحيب!")
+            return
+
         # ════ عرض إعدادات الترحيب الحالية ════
         if cmd2 == ".ترحيب اعدادات":
             status = "✅ مفعل" if welcome_state["active"] else "🔴 معطل"
             media_type = "صورة 🖼" if welcome_state["use_photo"] else "GIF 🎞"
+            src_btn = "✅ ظاهر" if welcome_state["btn_source"]["active"] else "🔴 مخفي"
+            custom_btn = f"✅ {welcome_state['btn_custom']['text']}" if welcome_state["btn_custom"]["active"] else "🔴 مش موجود"
             await reply_or_edit(event,
                 f"⚙️ **إعدادات الترحيب:**\n\n"
                 f"الحالة: {status}\n"
                 f"النوع: {media_type}\n"
                 f"التنسيق: {welcome_state['parse_mode'] or 'بدون'}\n\n"
+                f"**الأزرار:**\n"
+                f"سورس تلاشاني: {src_btn}\n"
+                f"الزر المخصص: {custom_btn}\n\n"
                 f"**النص:**\n{welcome_state['text']}",
                 parse_mode='markdown'
             )
@@ -809,11 +882,9 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
 
         # ════ كتم مشرف (حذف رسائله تلقائياً) ════
         if cmd2 == ".كتم مشرف":
-            if not event.is_reply:
-                await reply_or_edit(event, "⚠️ رد على رسالة المشرف عشان تكتمه!")
+            target_id = await resolve_target(event, parts[2:])
+            if not target_id:
                 return
-            reply = await event.get_reply_message()
-            target_id = reply.sender_id
             if event.chat_id not in muted_admins:
                 muted_admins[event.chat_id] = set()
             muted_admins[event.chat_id].add(target_id)
@@ -822,11 +893,9 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
 
         # ════ فك كتم مشرف ════
         if cmd3 == ".فك كتم مشرف":
-            if not event.is_reply:
-                await reply_or_edit(event, "⚠️ رد على رسالة المشرف عشان تفك كتمه!")
+            target_id = await resolve_target(event, parts[3:])
+            if not target_id:
                 return
-            reply = await event.get_reply_message()
-            target_id = reply.sender_id
             if event.chat_id in muted_admins:
                 muted_admins[event.chat_id].discard(target_id)
             await reply_or_edit(event, "🔊 تم فك كتم المشرف!")
@@ -834,27 +903,39 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
 
         # ════ رفع مشرف ════
         if cmd2 == ".رفع مشرف":
-            if not event.is_reply:
-                await reply_or_edit(event, "⚠️ رد على رسالة العضو عشان ترفعه مشرف!")
+            # لو في args بعد "رفع مشرف" → أول arg ممكن يكون يوزر/ID أو لقب
+            # لو رد → target من الرد، والباقي كله لقب
+            if event.is_reply:
+                reply = await event.get_reply_message()
+                target_id = reply.sender_id
+                title = " ".join(parts[2:]) if len(parts) > 2 else ""
+            elif len(parts) > 2:
+                try:
+                    entity = await client.get_entity(parts[2].lstrip('@') if parts[2].startswith('@') else int(parts[2]))
+                    target_id = entity.id
+                    title = " ".join(parts[3:]) if len(parts) > 3 else ""
+                except Exception:
+                    # مش ID ولا يوزر → كله لقب بس مفيش target
+                    await reply_or_edit(event, "⚠️ استخدم: رد على رسالة أو اكتب @يوزر أو ID\nمثال: `.رفع مشرف @يوزر لقب المشرف`")
+                    return
+            else:
+                await reply_or_edit(event, "⚠️ استخدم: رد على رسالة أو `.رفع مشرف @يوزر <لقب>`")
                 return
-            title = " ".join(parts[2:]) if len(parts) > 2 else ""
-            reply = await event.get_reply_message()
-            target_id = reply.sender_id
             try:
                 await client(EditAdminRequest(
                     channel=event.chat_id,
                     user_id=target_id,
                     admin_rights=ChatAdminRights(
-                        change_info=False,       # ❌ تعديل معلومات المجموعة
-                        post_messages=True,      # ✅ نشر رسائل
-                        edit_messages=True,      # ✅ تعديل رسائل
-                        delete_messages=True,    # ✅ حذف رسائل
-                        ban_users=True,          # ✅ حظر أعضاء
-                        invite_users=True,       # ✅ دعوة أعضاء
-                        pin_messages=True,       # ✅ تثبيت رسائل
-                        add_admins=False,        # ❌ إضافة مشرفين
-                        anonymous=False,         # ❌ إخفاء
-                        manage_call=True,        # ✅ إدارة المكالمات
+                        change_info=False,
+                        post_messages=True,
+                        edit_messages=True,
+                        delete_messages=True,
+                        ban_users=True,
+                        invite_users=True,
+                        pin_messages=True,
+                        add_admins=False,
+                        anonymous=False,
+                        manage_call=True,
                         other=True,
                         manage_topics=True,
                     ),
@@ -864,7 +945,6 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 name = getattr(target, 'first_name', '') or getattr(target, 'username', str(target_id))
                 await reply_or_edit(event,
                     f"✅ تم رفع **{name}** مشرفاً{f' بلقب **{title}**' if title else ''}!\n\n"
-                    f"📋 الصلاحيات:\n"
                     f"✅ حذف رسائل | ✅ حظر أعضاء\n"
                     f"✅ دعوة أعضاء | ✅ تثبيت رسائل\n"
                     f"✅ تعديل رسائل | ✅ إدارة مكالمات\n"
@@ -877,7 +957,56 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 await reply_or_edit(event, f"❌ خطأ: {e}")
             return
 
-        # ════ تحديد حد الحظر للمشرفين ════
+        # ════ تنزيل كل المشرفين ════
+        if cmd3 == ".تنزيل كل المشرفين":
+            await reply_or_edit(event, "⏳ جاري تنزيل المشرفين...")
+            try:
+                from telethon.tl.types import ChannelParticipantAdmin, ChannelParticipantCreator
+                demoted = 0
+                failed = 0
+                names = []
+                async for participant in client.iter_participants(event.chat_id, filter=ChannelParticipantsAdmins):
+                    # تجاهل نفسك والمالكين
+                    if participant.id == owner_id:
+                        continue
+                    p = participant.participant
+                    if isinstance(p, ChannelParticipantCreator):
+                        continue
+                    # بس اللي إنت رفعتهم (promoted_by = owner_id)
+                    if isinstance(p, ChannelParticipantAdmin):
+                        if getattr(p, 'promoted_by', None) != owner_id:
+                            continue
+                    try:
+                        await client(EditAdminRequest(
+                            channel=event.chat_id,
+                            user_id=participant.id,
+                            admin_rights=ChatAdminRights(
+                                change_info=False, post_messages=False,
+                                edit_messages=False, delete_messages=False,
+                                ban_users=False, invite_users=False,
+                                pin_messages=False, add_admins=False,
+                                anonymous=False, manage_call=False, other=False,
+                            ),
+                            rank=""
+                        ))
+                        name = getattr(participant, 'first_name', '') or getattr(participant, 'username', str(participant.id))
+                        names.append(f"👤 {name}")
+                        demoted += 1
+                        await asyncio.sleep(0.5)
+                    except Exception:
+                        failed += 1
+
+                names_text = "\n".join(names[:20])
+                extra = f"\n... و{len(names)-20} أكتر" if len(names) > 20 else ""
+                await reply_or_edit(event,
+                    f"✅ تم تنزيل **{demoted}** مشرف!\n"
+                    + (f"❌ فشل: {failed}\n" if failed else "") +
+                    f"\n{names_text}{extra}",
+                    parse_mode='markdown'
+                )
+            except Exception as e:
+                await reply_or_edit(event, f"❌ خطأ: {e}")
+            return
         if cmd2 == ".حد حظر":
             if not args or not parts[2:] or not parts[2].isdigit():
                 await reply_or_edit(event, "⚠️ الاستخدام: `.حد حظر <عدد>`\nمثال: `.حد حظر 3`")
