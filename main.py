@@ -1384,6 +1384,50 @@ async def collect_transfer_handler(update: Update, context: ContextTypes.DEFAULT
         parse_mode="Markdown"
     )
 
+async def source_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """يرد على أي حد يكتب 'سورس' بفيديو وأزرار المطور"""
+    if not update.message:
+        return
+    try:
+        dev = await context.bot.get_chat(DEVELOPER_ID)
+        dev_name = dev.first_name or "المطور"
+        dev_username = f"@{dev.username}" if dev.username else dev_name
+    except Exception:
+        dev_name = "المطور"
+        dev_username = "المطور"
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            text=f"👨‍💻 {dev_name}",
+            url=f"tg://user?id={DEVELOPER_ID}"
+        )
+    ]])
+
+    caption = (
+        f"✨ **سورس البوت**\n\n"
+        f"🛠 تم التطوير بواسطة: {dev_username}\n"
+        f"💬 تواصل مع المطور عبر الزر أدناه"
+    )
+
+    if SOURCE_VIDEO_URL:
+        try:
+            await update.message.reply_video(
+                video=SOURCE_VIDEO_URL,
+                caption=caption,
+                parse_mode="Markdown",
+                reply_markup=keyboard
+            )
+            return
+        except Exception:
+            pass
+
+    await update.message.reply_text(
+        caption,
+        parse_mode="Markdown",
+        reply_markup=keyboard
+    )
+
+
 async def mass_comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """يخلي كل الحسابات النشطة تعمل تعليق على منشور في قناة/جروب (وتنضم أولاً لو مش منضمة)"""
     user_id = update.effective_user.id
