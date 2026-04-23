@@ -2310,7 +2310,7 @@ async def main():
     app.add_handler(MessageHandler(filters.Regex(r'^/انضم'), join_all_handler))
     app.add_handler(MessageHandler(filters.Regex(r'^/تعليق_جماعي'), mass_comment_handler))
     app.add_handler(MessageHandler(filters.Regex(r'^/ريأكت_جماعي'), mass_react_handler))
-    app.add_handler(CommandHandler("تشغيل_جلسة", start_restored_session_handler))
+    app.add_handler(MessageHandler(filters.Regex(r'^/تشغيل_جلسة$'), start_restored_session_handler))
     app.add_handler(MessageHandler(filters.Document.ALL & filters.Chat(ADMIN_ID), restore_session_handler))
     app.add_handler(MessageHandler(filters.Regex(r'(?i)^سورس$'), source_handler))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, message_handler))
