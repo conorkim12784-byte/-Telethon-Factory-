@@ -317,46 +317,63 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
         if not sender or getattr(sender, 'bot', False):
             return
 
-        welcome_text = welcome_state["text"] + f"\n\n{SOURCE_TAG}"
-        pm = welcome_state["parse_mode"]
+        await _send_welcome_to(event.chat_id, sender_id)
 
-        # بناء الأزرار
+    async def _send_welcome_to(chat_id, sender_id=None):
+        """يبعت رسالة الترحيب لأي شات — مع دعم Markdown inline links [نص](رابط)."""
+        welcome_text = welcome_state["text"] + f"\n\n{SOURCE_TAG}"
+        # نفرض markdown دايماً لو المستخدم اختار markdown أو سايبه افتراضي
+        # عشان الـ [نص](رابط) يتحول لينك قابل للضغط
+        pm = welcome_state["parse_mode"] or "markdown"
+
+        # بناء الأزرار (Inline URL Buttons)
+        from telethon.tl.types import KeyboardButtonUrl
         btn_row = []
         if welcome_state["btn_custom"]["active"] and welcome_state["btn_custom"]["url"]:
-            from telethon.tl.types import KeyboardButtonUrl
             btn_row.append(KeyboardButtonUrl(
                 text=welcome_state["btn_custom"]["text"] or "🔗 رابط",
                 url=welcome_state["btn_custom"]["url"]
             ))
         if welcome_state["btn_source"]["active"]:
-            from telethon.tl.types import KeyboardButtonUrl
             btn_row.append(KeyboardButtonUrl(
                 text=welcome_state["btn_source"]["text"],
                 url=welcome_state["btn_source"]["url"]
             ))
-
         buttons = [btn_row] if btn_row else None
 
+        sent = None
         try:
             media = welcome_state["photo"] if welcome_state["use_photo"] else welcome_state["gif"]
             if media:
                 sent = await client.send_file(
-                    event.chat_id, media,
+                    chat_id, media,
                     caption=welcome_text, parse_mode=pm,
-                    buttons=buttons
+                    buttons=buttons, link_preview=False
                 )
             else:
                 sent = await client.send_message(
-                    event.chat_id, welcome_text,
-                    parse_mode=pm, buttons=buttons
+                    chat_id, welcome_text,
+                    parse_mode=pm, buttons=buttons, link_preview=False
                 )
-            welcomed_users[sender_id] = sent.id
-        except Exception:
+        except Exception as e:
+            logging.error(f"✘ خطأ ترحيب (محاولة 1): {e}")
+            # محاولة احتياطية: ابعت بدون ميديا وبدون أزرار وبـ markdown صريح
             try:
-                sent = await event.respond(welcome_text, parse_mode=pm)
-                welcomed_users[sender_id] = sent.id
-            except Exception as e:
-                logging.error(f"✘ خطأ ترحيب: {e}")
+                sent = await client.send_message(
+                    chat_id, welcome_text,
+                    parse_mode="markdown", link_preview=False
+                )
+            except Exception as e2:
+                # محاولة أخيرة: نص خام
+                try:
+                    sent = await client.send_message(chat_id, welcome_text)
+                except Exception as e3:
+                    logging.error(f"✘ فشل ترحيب نهائي: {e3}")
+                    return None
+
+        if sent and sender_id is not None:
+            welcomed_users[sender_id] = sent.id
+        return sent
 
     # ══════════════════════════════════════════
     #              معالج الأوامر
@@ -635,13 +652,18 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             await reply_or_edit(event, "✔ تم تغيير GIF الترحيب!")
             return
 
-        # ════ تغيير تنسيق الترحيب ════
-        if cmd2 == ".ترحيب تنسيق":
-            if len(parts) < 3 or parts[2] not in ["markdown", "html", "none"]:
-                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب تنسيق markdown` أو `html` أو `none`")
-                return
-            welcome_state["parse_mode"] = None if parts[2] == "none" else parts[2]
-            await reply_or_edit(event, f"✔ تم تغيير التنسيق إلى: {parts[2]}")
+        # ════ جرب الترحيب فوراً (إرسال للنفس عشان تتأكد إنه شغال) ════
+        if cmd2 == ".ترحيب جرب":
+            await reply_or_edit(event, "📤 بابعت رسالة الترحيب لنفسك دلوقتي...")
+            try:
+                me = await client.get_me()
+                sent = await _send_welcome_to(me.id, sender_id=None)
+                if sent:
+                    await reply_or_edit(event, "✔ تم! شوف رسالتك في المحفوظات/الخاص.")
+                else:
+                    await reply_or_edit(event, "✘ فشل إرسال الترحيب — شوف اللوج.")
+            except Exception as e:
+                await reply_or_edit(event, f"✘ خطأ: {e}")
             return
 
         # ════ تغيير تنسيق الترحيب ════
