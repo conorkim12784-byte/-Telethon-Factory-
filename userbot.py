@@ -27,19 +27,26 @@ OFFICIAL_CHANNEL_LINK = "https://t.me/I0_I6"
 WELCOME_GIF = "https://i.postimg.cc/wxV3PspQ/1756574872401.gif"
 
 SOURCE_TAG = """
-╭━─━─━Source━─━─━➾
-        @I0_I6
-╰━─━─━Source━─━─━➾"""
+╭──⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁──⟤
+│╭───────────⟢
+╞╡   Date of establishment 2022
+╞╡ 
+╞╡This is the simplest thing we have
+│╰────────────╮
+│╭────────────╯
+╞╡      Source code in Python
+│╰───────────⟢
+╰──⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁──⟤"""
 
 COMMANDS_TEXT = """
 📌 **قائمة الأوامر**
-━━━━━━━━━━━━━━━━━━━━
+──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
 
 🛡️ **الحماية:**
 `.حظر` — حظر عضو (رد / @يوزر / ID)
-`.فكحظر` — فك حظر (رد / @يوزر / ID)
+`.فك حظر` — فك حظر (رد / @يوزر / ID)
 `.كتم` — تقييد عضو وحذف رسائله
-`.فككتم` — فك التقييد
+`.فك كتم` — فك التقييد
 `.كتم مشرف` — كتم مشرف (رد / @يوزر / ID)
 `.فك كتم مشرف` — فك كتم مشرف (رد / @يوزر / ID)
 `.رفع مشرف @يوزر <لقب>` — رفع مشرف بصلاحيات كاملة
@@ -47,7 +54,7 @@ COMMANDS_TEXT = """
 `.حد حظر <عدد>` — حد أقصى للحظر لكل مشرف
 `.الغ حد` — إلغاء حد الحظر
 
-━━━━━━━━━━━━━━━━━━━━
+──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
 
 👋 **الترحيب:**
 `.ترحيب تشغيل` — تفعيل الترحيب
@@ -63,45 +70,44 @@ COMMANDS_TEXT = """
 `.ترحيب اعدادات` — عرض الإعدادات الحالية
 `.قبول` — إيقاف الترحيب لمستخدم وحذف رسالته
 
-━━━━━━━━━━━━━━━━━━━━
+──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
 
 😴 **وضع النوم:**
 `.نايم` — تفعيل وضع النوم
 `.نايم <رسالة>` — تفعيل برسالة مخصصة
 `.صحيت` — إيقاف وضع النوم
 
-━━━━━━━━━━━━━━━━━━━━
+──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
 
 📢 **الإذاعة:**
 `.اذاعة خاص <رسالة>` — إرسال لكل المحادثات الخاصة
 `.اذاعة جروب <رسالة>` — إرسال لكل المجموعات
 
-━━━━━━━━━━━━━━━━━━━━
+──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
 
 📡 **تتبع القنوات:**
 `.تتبع قناة <@مصدر> <@استلام>` — بدء التتبع
 `.وقف التتبع` — إيقاف التتبع
 
-━━━━━━━━━━━━━━━━━━━━
+──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
 
 📁 **المجلدات:**
 `.مجلد قنواتي [اسم]` — مجلد القنوات
 `.مجلد جروباتي [اسم]` — مجلد الجروبات
 `.مجلد بوتاتي [اسم]` — مجلد البوتات
 
-━━━━━━━━━━━━━━━━━━━━
+──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
 
-🎁 **الهدايا والنقاط:**
-`.هدية` — جمع الهدية اليومية من psjbot
-`.تحويل` — تحويل كل النقاط للمطور
+👥 **نقل الأعضاء:**
+`.نقل اعضاء @مصدر @استلام` — نقل أعضاء من جروب لجروب
 
-━━━━━━━━━━━━━━━━━━━━
+──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
 
 🔧 **إعدادات البوت:**
 `.سورس تشغيل` — تفعيل الرد على كلمة سورس
 `.سورس ايقاف` — تعطيل الرد على كلمة سورس
 
-━━━━━━━━━━━━━━━━━━━━
+──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
 """
 
 # ══════════════════════════════════════════
@@ -110,8 +116,8 @@ COMMANDS_TEXT = """
 async def start_userbot(client: TelegramClient, target_chat, user_data_store):
     me = await client.get_me()
     owner_id = me.id
-    logging.info(f"✅ يوزربوت شغال: {me.first_name} ({owner_id})")
-    print(f"✅ يوزربوت شغال: {me.first_name} ({owner_id})")
+    logging.info(f"✔ يوزربوت شغال: {me.first_name} ({owner_id})")
+    print(f"✔ يوزربوت شغال: {me.first_name} ({owner_id})")
 
     # ══ الحالات الداخلية ══
     muted_admins = {}
@@ -131,7 +137,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
         "gif": WELCOME_GIF,
         "use_photo": False,
         "parse_mode": "markdown",
-        "btn_source": {"text": "سـورس تـلاشاني 📢", "url": "https://t.me/FY_TF", "active": True},
+        "btn_source": {"text": "𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆 ", "url": "https://t.me/FY_TF", "active": True},
         "btn_custom": {"text": "", "url": "", "active": False},
     }
 
@@ -166,7 +172,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 entity = await client.get_entity(target.lstrip('@') if target.startswith('@') else int(target))
                 return entity.id
             except Exception as e:
-                await reply_or_edit(event, f"❌ مش قادر أجيب المستخدم: {e}")
+                await reply_or_edit(event, f"✘ مش قادر أجيب المستخدم: {e}")
                 return None
         await reply_or_edit(event, "⚠️ استخدم: رد على رسالة أو اكتب @يوزر أو ID")
         return None
@@ -230,7 +236,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
 
             try:
                 sent = await client.send_message(dest_channel, msg, parse_mode="markdown")
-                logging.info(f"✅ ارسل: {msg}")
+                logging.info(f"✔ ارسل: {msg}")
 
                 async def delete_after(sent_msg, delay=300):
                     await asyncio.sleep(delay)
@@ -297,7 +303,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 sent = await event.respond(welcome_text, parse_mode=pm)
                 welcomed_users[sender_id] = sent.id
             except Exception as e:
-                logging.error(f"❌ خطأ ترحيب: {e}")
+                logging.error(f"✘ خطأ ترحيب: {e}")
 
     # ══════════════════════════════════════════
     #              معالج الأوامر
@@ -316,7 +322,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
         cmd4 = " ".join(parts[:4]).lower() if len(parts) >= 4 else ""
 
         # ════ قائمة الأوامر ════
-        if cmd in (".الاوامر", ".اوامري"):
+        if cmd in (".الاوامر", ".ا"):
             await reply_or_edit(event, COMMANDS_TEXT, parse_mode='markdown')
             return
 
@@ -356,7 +362,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                         await asyncio.sleep(1)
                     except Exception:
                         pass
-            await reply_or_edit(event, f"✅ تم الإرسال لـ {count} محادثة خاصة!")
+            await reply_or_edit(event, f"✔ تم الإرسال لـ {count} محادثة خاصة!")
             return
 
         # ════ إذاعة جروب ════
@@ -376,7 +382,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                         await asyncio.sleep(1)
                     except Exception:
                         pass
-            await reply_or_edit(event, f"✅ تم الإرسال لـ {count} مجموعة!")
+            await reply_or_edit(event, f"✔ تم الإرسال لـ {count} مجموعة!")
             return
 
         # ════ تتبع قناة ════
@@ -394,13 +400,13 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 if hasattr(src, 'access_hash'):
                     tracked_channels[int(f"-100{src_id}")] = dst_id
                 await reply_or_edit(event,
-                    f"✅ بدأ التتبع!\n"
+                    f"✔ بدأ التتبع!\n"
                     f"📡 المصدر: {src.title}\n"
                     f"📥 الاستلام: {dst.title}\n\n"
                     f"🔍 هيستخرج أي رقم بصيغة `*858*XXXXXX#` تلقائياً"
                 )
             except Exception as e:
-                await reply_or_edit(event, f"❌ خطأ: {e}")
+                await reply_or_edit(event, f"✘ خطأ: {e}")
             return
 
         # ════ وقف التتبع ════
@@ -467,12 +473,12 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                         except Exception:
                             pass
                 if not peers:
-                    await reply_or_edit(event, "❌ مش لاقي أي قناة إنت مالكها!")
+                    await reply_or_edit(event, "✘ مش لاقي أي قناة إنت مالكها!")
                     return
                 result = await make_folder(folder_name, peers, names)
-                await reply_or_edit(event, f"✅ تم إنشاء مجلد **{folder_name}**!\n\n{result}", parse_mode='markdown')
+                await reply_or_edit(event, f"✔ تم إنشاء مجلد **{folder_name}**!\n\n{result}", parse_mode='markdown')
             except Exception as e:
-                await reply_or_edit(event, f"❌ حصل خطأ: {e}")
+                await reply_or_edit(event, f"✘ حصل خطأ: {e}")
             return
 
         # ════ مجلد جروباتي ════
@@ -500,12 +506,12 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                             peers.append(InputPeerChat(entity.id))
                             names.append(f"👥 {entity.title}")
                 if not peers:
-                    await reply_or_edit(event, "❌ مش لاقي أي جروب إنت مالكه!")
+                    await reply_or_edit(event, "✘ مش لاقي أي جروب إنت مالكه!")
                     return
                 result = await make_folder(folder_name, peers, names)
-                await reply_or_edit(event, f"✅ تم إنشاء مجلد **{folder_name}**!\n\n{result}", parse_mode='markdown')
+                await reply_or_edit(event, f"✔ تم إنشاء مجلد **{folder_name}**!\n\n{result}", parse_mode='markdown')
             except Exception as e:
-                await reply_or_edit(event, f"❌ حصل خطأ: {e}")
+                await reply_or_edit(event, f"✘ حصل خطأ: {e}")
             return
 
         # ════ مجلد بوتاتي ════
@@ -521,18 +527,18 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                         peers.append(InputPeerUser(entity.id, entity.access_hash))
                         names.append(f"🤖 {entity.first_name or entity.username or str(entity.id)}")
                 if not peers:
-                    await reply_or_edit(event, "❌ مش لاقي أي بوت!")
+                    await reply_or_edit(event, "✘ مش لاقي أي بوت!")
                     return
                 result = await make_folder(folder_name, peers, names)
-                await reply_or_edit(event, f"✅ تم إنشاء مجلد **{folder_name}**!\n\n{result}", parse_mode='markdown')
+                await reply_or_edit(event, f"✔ تم إنشاء مجلد **{folder_name}**!\n\n{result}", parse_mode='markdown')
             except Exception as e:
-                await reply_or_edit(event, f"❌ حصل خطأ: {e}")
+                await reply_or_edit(event, f"✘ حصل خطأ: {e}")
             return
 
         # ════ تحكم في السورس ════
         if cmd2 == ".سورس تشغيل":
             source_state["active"] = True
-            await reply_or_edit(event, "✅ تم تفعيل رد السورس!")
+            await reply_or_edit(event, "✔ تم تفعيل رد السورس!")
             return
         if cmd2 == ".سورس ايقاف":
             source_state["active"] = False
@@ -542,7 +548,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
         # ════ تحكم في الترحيب ════
         if cmd2 == ".ترحيب تشغيل":
             welcome_state["active"] = True
-            await reply_or_edit(event, "✅ تم تفعيل رسالة الترحيب!")
+            await reply_or_edit(event, "✔ تم تفعيل رسالة الترحيب!")
             return
         if cmd2 == ".ترحيب ايقاف":
             welcome_state["active"] = False
@@ -555,7 +561,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب نص <النص الجديد>`")
                 return
             welcome_state["text"] = " ".join(parts[2:])
-            await reply_or_edit(event, f"✅ تم تغيير نص الترحيب!\n\n{welcome_state['text']}")
+            await reply_or_edit(event, f"✔ تم تغيير نص الترحيب!\n\n{welcome_state['text']}")
             return
 
         # ════ تغيير صورة/GIF الترحيب ════
@@ -565,7 +571,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 return
             welcome_state["photo"] = parts[2]
             welcome_state["use_photo"] = True
-            await reply_or_edit(event, "✅ تم تغيير صورة الترحيب! (بيبعت صورة دلوقتي)")
+            await reply_or_edit(event, "✔ تم تغيير صورة الترحيب! (بيبعت صورة دلوقتي)")
             return
         if cmd2 == ".ترحيب gif":
             if len(parts) < 3:
@@ -573,7 +579,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 return
             welcome_state["gif"] = parts[2]
             welcome_state["use_photo"] = False
-            await reply_or_edit(event, "✅ تم تغيير GIF الترحيب!")
+            await reply_or_edit(event, "✔ تم تغيير GIF الترحيب!")
             return
 
         # ════ تغيير تنسيق الترحيب ════
@@ -582,7 +588,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب تنسيق markdown` أو `html` أو `none`")
                 return
             welcome_state["parse_mode"] = None if parts[2] == "none" else parts[2]
-            await reply_or_edit(event, f"✅ تم تغيير التنسيق إلى: {parts[2]}")
+            await reply_or_edit(event, f"✔ تم تغيير التنسيق إلى: {parts[2]}")
             return
 
         # ════ تغيير تنسيق الترحيب ════
@@ -591,7 +597,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب تنسيق markdown` أو `html` أو `none`")
                 return
             welcome_state["parse_mode"] = None if parts[2] == "none" else parts[2]
-            await reply_or_edit(event, f"✅ تم تغيير التنسيق إلى: {parts[2]}")
+            await reply_or_edit(event, f"✔ تم تغيير التنسيق إلى: {parts[2]}")
             return
 
         # ════ تحكم في زر السورس ════
@@ -601,7 +607,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 await reply_or_edit(event, "🔴 تم إخفاء زر سورس تلاشاني من الترحيب!")
             else:
                 welcome_state["btn_source"]["active"] = True
-                await reply_or_edit(event, "✅ تم إظهار زر سورس تلاشاني في الترحيب!")
+                await reply_or_edit(event, "✔ تم إظهار زر سورس تلاشاني في الترحيب!")
             return
 
         # ════ إضافة/تعديل زر مخصص ════
@@ -614,7 +620,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             welcome_state["btn_custom"]["text"] = btn_text.strip()
             welcome_state["btn_custom"]["url"] = btn_url.strip()
             welcome_state["btn_custom"]["active"] = True
-            await reply_or_edit(event, f"✅ تم إضافة الزر!\n\n🔘 {btn_text.strip()}\n🔗 {btn_url.strip()}")
+            await reply_or_edit(event, f"✔ تم إضافة الزر!\n\n🔘 {btn_text.strip()}\n🔗 {btn_url.strip()}")
             return
 
         # ════ إزالة الزر المخصص ════
@@ -622,15 +628,15 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             welcome_state["btn_custom"]["active"] = False
             welcome_state["btn_custom"]["text"] = ""
             welcome_state["btn_custom"]["url"] = ""
-            await reply_or_edit(event, "✅ تم إزالة الزر المخصص من الترحيب!")
+            await reply_or_edit(event, "✔ تم إزالة الزر المخصص من الترحيب!")
             return
 
         # ════ عرض إعدادات الترحيب الحالية ════
         if cmd2 == ".ترحيب اعدادات":
-            status = "✅ مفعل" if welcome_state["active"] else "🔴 معطل"
+            status = "✔ مفعل" if welcome_state["active"] else "🔴 معطل"
             media_type = "صورة 🖼" if welcome_state["use_photo"] else "GIF 🎞"
-            src_btn = "✅ ظاهر" if welcome_state["btn_source"]["active"] else "🔴 مخفي"
-            custom_btn = f"✅ {welcome_state['btn_custom']['text']}" if welcome_state["btn_custom"]["active"] else "🔴 مش موجود"
+            src_btn = "✔ ظاهر" if welcome_state["btn_source"]["active"] else "🔴 مخفي"
+            custom_btn = f"✔ {welcome_state['btn_custom']['text']}" if welcome_state["btn_custom"]["active"] else "🔴 مش موجود"
             await reply_or_edit(event,
                 f"⚙️ **إعدادات الترحيب:**\n\n"
                 f"الحالة: {status}\n"
@@ -669,7 +675,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                             break
 
                 if not clicked:
-                    await reply_or_edit(event, "❌ مش لاقي زرار تجميع نقاط!")
+                    await reply_or_edit(event, "✘ مش لاقي زرار تجميع نقاط!")
                     return
 
                 await asyncio.sleep(2)
@@ -689,7 +695,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                             break
 
                 if not clicked2:
-                    await reply_or_edit(event, "❌ مش لاقي زرار الهدية اليومية!")
+                    await reply_or_edit(event, "✘ مش لاقي زرار الهدية اليومية!")
                     return
 
                 await asyncio.sleep(2)
@@ -703,12 +709,12 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                         break
 
                 if result_text:
-                    await reply_or_edit(event, f"✅ تم!\n\n{result_text}")
+                    await reply_or_edit(event, f"✔ تم!\n\n{result_text}")
                 else:
-                    await reply_or_edit(event, "✅ تم الضغط على الهدية اليومية!")
+                    await reply_or_edit(event, "✔ تم الضغط على الهدية اليومية!")
 
             except Exception as e:
-                await reply_or_edit(event, f"❌ خطأ: {e}")
+                await reply_or_edit(event, f"✘ خطأ: {e}")
             return
 
         # ════ تحويل النقاط لـ psjbot ════
@@ -736,7 +742,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                         if clicked1:
                             break
                 if not clicked1:
-                    await reply_or_edit(event, "❌ مش لاقي زرار تحويل نقاط!")
+                    await reply_or_edit(event, "✘ مش لاقي زرار تحويل نقاط!")
                     return
 
                 await asyncio.sleep(2)
@@ -752,7 +758,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                             break
 
                 if balance <= 0:
-                    await reply_or_edit(event, "❌ الرصيد صفر أو مش قادر أقراه!")
+                    await reply_or_edit(event, "✘ الرصيد صفر أو مش قادر أقراه!")
                     return
 
                 # خطوة 4: ابعت عدد النقاط (كل الرصيد)
@@ -777,7 +783,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                         if confirmed:
                             break
                 if not confirmed:
-                    await reply_or_edit(event, "❌ مش لاقي زرار تأكيد!")
+                    await reply_or_edit(event, "✘ مش لاقي زرار تأكيد!")
                     return
 
                 await asyncio.sleep(2)
@@ -790,10 +796,10 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                         result_text = m.text.split("\n")[0]
                         break
 
-                await reply_or_edit(event, f"✅ تم!\n\n{result_text or f'تم تحويل {balance} نقطة!'}")
+                await reply_or_edit(event, f"✔ تم!\n\n{result_text or f'تم تحويل {balance} نقطة!'}")
 
             except Exception as e:
-                await reply_or_edit(event, f"❌ خطأ: {e}")
+                await reply_or_edit(event, f"✘ خطأ: {e}")
             return
 
         if cmd == ".نايم":
@@ -826,23 +832,23 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 await client.edit_permissions(event.chat_id, target_id, view_messages=False)
                 await reply_or_edit(event, "🚫 تم حظر المستخدم بنجاح!")
             except ChatAdminRequiredError:
-                await reply_or_edit(event, "❌ محتاج صلاحية حظر الأعضاء!")
+                await reply_or_edit(event, "✘ محتاج صلاحية حظر الأعضاء!")
             except Exception as e:
-                await reply_or_edit(event, f"❌ خطأ: {e}")
+                await reply_or_edit(event, f"✘ خطأ: {e}")
             return
 
         # ════ فك حظر ════
-        if cmd == ".فكحظر":
+        if cmd == ".فك حظر":
             target_id = await resolve_target(event, args)
             if not target_id:
                 return
             try:
                 await client.edit_permissions(event.chat_id, target_id, view_messages=True)
-                await reply_or_edit(event, "✅ تم فك حظر المستخدم!")
+                await reply_or_edit(event, "✔ تم فك حظر المستخدم!")
             except ChatAdminRequiredError:
-                await reply_or_edit(event, "❌ محتاج صلاحية!")
+                await reply_or_edit(event, "✘ محتاج صلاحية!")
             except Exception as e:
-                await reply_or_edit(event, f"❌ خطأ: {e}")
+                await reply_or_edit(event, f"✘ خطأ: {e}")
             return
 
         # ════ كتم (تقييد + حذف رسائله) ════
@@ -861,13 +867,13 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                         pass
                 await reply_or_edit(event, f"🔇 تم كتم المستخدم وحذف {deleted} رسالة!")
             except ChatAdminRequiredError:
-                await reply_or_edit(event, "❌ محتاج صلاحية!")
+                await reply_or_edit(event, "✘ محتاج صلاحية!")
             except Exception as e:
-                await reply_or_edit(event, f"❌ خطأ: {e}")
+                await reply_or_edit(event, f"✘ خطأ: {e}")
             return
 
         # ════ فك كتم ════
-        if cmd == ".فككتم":
+        if cmd == ".فك كتم":
             target_id = await resolve_target(event, args)
             if not target_id:
                 return
@@ -875,9 +881,9 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 await client.edit_permissions(event.chat_id, target_id, send_messages=True)
                 await reply_or_edit(event, "🔊 تم فك كتم المستخدم!")
             except ChatAdminRequiredError:
-                await reply_or_edit(event, "❌ محتاج صلاحية!")
+                await reply_or_edit(event, "✘ محتاج صلاحية!")
             except Exception as e:
-                await reply_or_edit(event, f"❌ خطأ: {e}")
+                await reply_or_edit(event, f"✘ خطأ: {e}")
             return
 
         # ════ كتم مشرف (حذف رسائله تلقائياً) ════
@@ -944,17 +950,17 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 target = await client.get_entity(target_id)
                 name = getattr(target, 'first_name', '') or getattr(target, 'username', str(target_id))
                 await reply_or_edit(event,
-                    f"✅ تم رفع **{name}** مشرفاً{f' بلقب **{title}**' if title else ''}!\n\n"
-                    f"✅ حذف رسائل | ✅ حظر أعضاء\n"
-                    f"✅ دعوة أعضاء | ✅ تثبيت رسائل\n"
-                    f"✅ تعديل رسائل | ✅ إدارة مكالمات\n"
-                    f"❌ تعديل المجموعة | ❌ إضافة مشرفين | ❌ الإخفاء",
+                    f"✔ تم رفع **{name}** مشرفاً{f' بلقب **{title}**' if title else ''}!\n\n"
+                    f"✔ حذف رسائل | ✔ حظر أعضاء\n"
+                    f"✔ دعوة أعضاء | ✔ تثبيت رسائل\n"
+                    f"✔ تعديل رسائل | ✔ إدارة مكالمات\n"
+                    f"✘ تعديل المجموعة | ✘ إضافة مشرفين | ✘ الإخفاء",
                     parse_mode='markdown'
                 )
             except ChatAdminRequiredError:
-                await reply_or_edit(event, "❌ محتاج صلاحية إضافة مشرفين!")
+                await reply_or_edit(event, "✘ محتاج صلاحية إضافة مشرفين!")
             except Exception as e:
-                await reply_or_edit(event, f"❌ خطأ: {e}")
+                await reply_or_edit(event, f"✘ خطأ: {e}")
             return
 
         # ════ تنزيل كل المشرفين ════
@@ -999,13 +1005,13 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 names_text = "\n".join(names[:20])
                 extra = f"\n... و{len(names)-20} أكتر" if len(names) > 20 else ""
                 await reply_or_edit(event,
-                    f"✅ تم تنزيل **{demoted}** مشرف!\n"
-                    + (f"❌ فشل: {failed}\n" if failed else "") +
+                    f"✔ تم تنزيل **{demoted}** مشرف!\n"
+                    + (f"✘ فشل: {failed}\n" if failed else "") +
                     f"\n{names_text}{extra}",
                     parse_mode='markdown'
                 )
             except Exception as e:
-                await reply_or_edit(event, f"❌ خطأ: {e}")
+                await reply_or_edit(event, f"✘ خطأ: {e}")
             return
         if cmd2 == ".حد حظر":
             if not args or not parts[2:] or not parts[2].isdigit():
@@ -1016,7 +1022,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             if event.chat_id not in admin_ban_count:
                 admin_ban_count[event.chat_id] = {}
             await reply_or_edit(event,
-                f"✅ تم تحديد الحد الأقصى للحظر بـ **{limit}** حظر لكل مشرف!\n"
+                f"✔ تم تحديد الحد الأقصى للحظر بـ **{limit}** حظر لكل مشرف!\n"
                 f"⚠️ أي مشرف يتجاوز الحد هيتسحب منه الإشراف تلقائياً.",
                 parse_mode='markdown'
             )
@@ -1028,7 +1034,37 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 del ban_limits[event.chat_id]
             if event.chat_id in admin_ban_count:
                 del admin_ban_count[event.chat_id]
-            await reply_or_edit(event, "✅ تم إلغاء حد الحظر في هذا الجروب!")
+            await reply_or_edit(event, "✔ تم إلغاء حد الحظر في هذا الجروب!")
+            return
+
+        # ════ نقل أعضاء من جروب لجروب ════
+        if cmd2 == ".نقل اعضاء":
+            if len(parts) < 4:
+                await reply_or_edit(event, "⚠️ الاستخدام: `.نقل اعضاء @مصدر @استلام`")
+                return
+            await reply_or_edit(event, "⏳ جاري نقل الأعضاء...")
+            try:
+                src = await client.get_entity(parts[2].lstrip('@'))
+                dst = await client.get_entity(parts[3].lstrip('@'))
+                added = 0
+                failed = 0
+                async for user in client.iter_participants(src):
+                    if user.bot or user.id == owner_id:
+                        continue
+                    try:
+                        await client(InviteToChannelRequest(dst, [user]))
+                        added += 1
+                        await asyncio.sleep(2)
+                    except FloodWaitError as e:
+                        await asyncio.sleep(e.seconds)
+                    except Exception:
+                        failed += 1
+                await reply_or_edit(event,
+                    f"✔ تم نقل **{added}** عضو!\n✘ فشل: {failed}",
+                    parse_mode='markdown'
+                )
+            except Exception as e:
+                await reply_or_edit(event, f"✘ خطأ: {e}")
             return
 
     # ══════════════════════════════════════════
@@ -1098,9 +1134,9 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                                 await client.send_message(chat_id, msg, parse_mode='markdown')
                                 admin_ban_count[chat_id][banner_id] = 0
                             except Exception as e:
-                                logging.error(f"❌ خطأ سحب الإشراف: {e}")
+                                logging.error(f"✘ خطأ سحب الإشراف: {e}")
                 except Exception as e:
-                    logging.error(f"❌ خطأ مراقبة الحظر: {e}")
+                    logging.error(f"✘ خطأ مراقبة الحظر: {e}")
 
     asyncio.ensure_future(check_admin_bans())
 
@@ -1135,7 +1171,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             await client.send_message(event.chat_id, sleep_state["msg"])
             sleep_replied.add(sender_id)
         except Exception as e:
-            logging.error(f"❌ خطأ وضع النوم: {e}")
+            logging.error(f"✘ خطأ وضع النوم: {e}")
 
     # ══════════════════════════════════════════
     #    لو رددت على حد وهو نايم - اتعطل في محادثته
@@ -1169,8 +1205,18 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 pass
 
             caption = (
-                f"✨ **سورس البوت**\n\n"
-                f"🛠 تم التطوير بواسطة: [{dev_name}](tg://user?id={DEVELOPER_ID})"
+                f"**
+╭────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤
+│╭───────────⟢
+╞╡   Date of establishment 2022
+╞╡ 
+╞╡This is the simplest thing we have
+│╰────────────╮
+│╭────────────╯
+╞╡      Source code in Python
+│╰───────────⟢
+╰────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤**\n\n"
+                f" [{dev_name}](tg://user?id={DEVELOPER_ID})"
             )
 
             sent_via_bot = False
@@ -1179,7 +1225,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 import aiohttp, json
                 keyboard = {
                     "inline_keyboard": [[
-                        {"text": f"👨‍💻 {dev_name}", "url": f"tg://user?id={DEVELOPER_ID}"}
+                        {"text": f"{dev_name}", "url": f"tg://user?id={DEVELOPER_ID}"}
                     ]]
                 }
                 try:
@@ -1213,13 +1259,85 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             # لو البوت مش في الجروب أو فشل → اليوزربوت يبعت markdown بدون أزرار
             if not sent_via_bot:
                 fallback = (
-                    f"✨ **سورس البوت**\n\n"
-                    f"🛠 تم التطوير بواسطة: [{dev_name}](tg://user?id={DEVELOPER_ID})"
+                    f"**
+╭────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤
+│╭───────────⟢
+╞╡   Date of establishment 2022
+╞╡ 
+╞╡This is the simplest thing we have
+│╰────────────╮
+│╭────────────╯
+╞╡      Source code in Python
+│╰───────────⟢
+╰────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤**\n\n"
+                    f" [{dev_name}](tg://user?id={DEVELOPER_ID})"
                 )
                 await event.reply(fallback, parse_mode='markdown')
 
         except Exception as e:
-            logging.error(f"❌ خطأ سورس: {e}")
+            logging.error(f"✘ خطأ سورس: {e}")
 
-    logging.info(f"✅ كل الهاندلرز اشتغلوا - {me.first_name}")
-    print(f"✅ كل الهاندلرز اشتغلوا - {me.first_name}")
+    # ══════════════════════════════════════════
+    #    تخزين الرسائل - خاص / رد / منشن
+    # ══════════════════════════════════════════
+    @client.on(events.NewMessage(incoming=True))
+    async def log_messages(event):
+        if not target_chat:
+            return
+        try:
+            sender = await event.get_sender()
+            if not sender:
+                return
+            sender_id = getattr(sender, 'id', None)
+            if sender_id == owner_id:
+                return
+
+            sender_name = getattr(sender, 'first_name', '') or getattr(sender, 'username', str(sender_id))
+            sender_link = f"[{sender_name}](tg://user?id={sender_id})"
+
+            # تحديد نوع الحدث
+            is_private = event.is_private
+            is_reply_to_me = False
+            is_mention = False
+
+            if event.is_reply:
+                replied = await event.get_reply_message()
+                if replied and replied.sender_id == owner_id:
+                    is_reply_to_me = True
+
+            if event.message.mentioned:
+                is_mention = True
+
+            if not (is_private or is_reply_to_me or is_mention):
+                return
+
+            # تحديد المصدر
+            if is_private:
+                source = "💬 خاص"
+            elif is_mention:
+                chat = await event.get_chat()
+                chat_name = getattr(chat, 'title', 'مجموعة')
+                source = f"📢 منشن في **{chat_name}**"
+            else:
+                chat = await event.get_chat()
+                chat_name = getattr(chat, 'title', 'مجموعة')
+                source = f"↩️ رد في **{chat_name}**"
+
+            from datetime import datetime
+            now = datetime.now().strftime("%Y-%m-%d %H:%M")
+            content = event.message.text or "[ميديا]"
+
+            log_text = (
+                f"📩 **رسالة جديدة**\n\n"
+                f"👤 من: {sender_link}\n"
+                f"📍 المصدر: {source}\n"
+                f"🕐 الوقت: {now}\n\n"
+                f"💬 **الرسالة:**\n{content}"
+            )
+
+            await client.send_message(target_chat, log_text, parse_mode='markdown')
+        except Exception as e:
+            logging.error(f"✘ خطأ تخزين: {e}")
+
+    logging.info(f"✔ كل الهاندلرز اشتغلوا - {me.first_name}")
+    print(f"✔ كل الهاندلرز اشتغلوا - {me.first_name}")
