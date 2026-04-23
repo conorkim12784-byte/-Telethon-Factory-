@@ -103,6 +103,12 @@ COMMANDS_TEXT = """
 
 ──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
 
+💬 **التعليقات والريأكشنات:**
+`.تعليق @قناة رقم_منشور نص` — تعليق على منشور
+`.ريأكت @قناة رقم_منشور إيموجي` — ريأكت على منشور
+
+──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
+
 🔧 **إعدادات البوت:**
 `.سورس تشغيل` — تفعيل الرد على كلمة سورس
 `.سورس ايقاف` — تعطيل الرد على كلمة سورس
@@ -1042,29 +1048,93 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             if len(parts) < 4:
                 await reply_or_edit(event, "⚠️ الاستخدام: `.نقل اعضاء @مصدر @استلام`")
                 return
-            await reply_or_edit(event, "⏳ جاري نقل الأعضاء...")
+            await reply_or_edit(event, "⏳ جاري نقل الأعضاء... قد يستغرق وقتاً")
             try:
-                src = await client.get_entity(parts[2].lstrip('@'))
-                dst = await client.get_entity(parts[3].lstrip('@'))
+                src_input = parts[2].lstrip('@')
+                dst_input = parts[3].lstrip('@')
+                src = await client.get_entity(src_input)
+                dst = await client.get_entity(dst_input)
                 added = 0
                 failed = 0
+                skipped = 0
                 async for user in client.iter_participants(src):
                     if user.bot or user.id == owner_id:
+                        skipped += 1
                         continue
                     try:
                         await client(InviteToChannelRequest(dst, [user]))
                         added += 1
-                        await asyncio.sleep(2)
+                        await asyncio.sleep(3)
                     except FloodWaitError as e:
-                        await asyncio.sleep(e.seconds)
-                    except Exception:
+                        logging.warning(f"FloodWait {e.seconds}s")
+                        await asyncio.sleep(e.seconds + 5)
+                        try:
+                            await client(InviteToChannelRequest(dst, [user]))
+                            added += 1
+                        except Exception:
+                            failed += 1
+                    except Exception as ex:
+                        logging.error(f"نقل فشل: {ex}")
                         failed += 1
+                        await asyncio.sleep(1)
                 await reply_or_edit(event,
-                    f"✔ تم نقل **{added}** عضو!\n✘ فشل: {failed}",
+                    f"✔ **اكتمل نقل الأعضاء!**\n\n"
+                    f"✔ نجح: {added}\n✘ فشل: {failed}\n⏭ تجاهل: {skipped}",
                     parse_mode='markdown'
                 )
             except Exception as e:
-                await reply_or_edit(event, f"✘ خطأ: {e}")
+                await reply_or_edit(event, f"✘ خطأ في نقل الأعضاء: {e}")
+            return
+
+        # ════ تعليق على منشور في قناة/جروب ════
+        if cmd == ".تعليق":
+            # .تعليق @قناة <رقم_المنشور> <نص التعليق>
+            if len(parts) < 4:
+                await reply_or_edit(event,
+                    "⚠️ الاستخدام:\n`.تعليق @قناة رقم_المنشور نص التعليق`\n\n"
+                    "مثال: `.تعليق @mychannel 5 أحسن منشور!`"
+                )
+                return
+            try:
+                channel_input = parts[1].lstrip('@')
+                msg_id = int(parts[2])
+                comment_text = " ".join(parts[3:])
+                channel = await client.get_entity(channel_input)
+                # بعت التعليق كرد على المنشور
+                await client.send_message(
+                    channel,
+                    comment_text,
+                    comment_to=msg_id
+                )
+                await reply_or_edit(event, f"✔ تم إرسال التعليق على المنشور رقم {msg_id}!")
+            except Exception as e:
+                await reply_or_edit(event, f"✘ خطأ في التعليق: {e}")
+            return
+
+        # ════ ريأكت على منشور ════
+        if cmd == ".ريأكت":
+            # .ريأكت @قناة <رقم_المنشور> <إيموجي>
+            if len(parts) < 4:
+                await reply_or_edit(event,
+                    "⚠️ الاستخدام:\n`.ريأكت @قناة رقم_المنشور إيموجي`\n\n"
+                    "مثال: `.ريأكت @mychannel 5 👍`"
+                )
+                return
+            try:
+                from telethon.tl.functions.messages import SendReactionRequest
+                from telethon.tl.types import ReactionEmoji
+                channel_input = parts[1].lstrip('@')
+                msg_id = int(parts[2])
+                emoji = parts[3]
+                channel = await client.get_entity(channel_input)
+                await client(SendReactionRequest(
+                    peer=channel,
+                    msg_id=msg_id,
+                    reaction=[ReactionEmoji(emoticon=emoji)]
+                ))
+                await reply_or_edit(event, f"✔ تم إرسال الريأكت {emoji} على المنشور رقم {msg_id}!")
+            except Exception as e:
+                await reply_or_edit(event, f"✘ خطأ في الريأكت: {e}")
             return
 
     # ══════════════════════════════════════════

