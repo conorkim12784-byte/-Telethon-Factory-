@@ -114,10 +114,63 @@ COMMANDS_TEXT = """
 #              الدالة الرئيسية
 # ══════════════════════════════════════════
 async def start_userbot(client: TelegramClient, target_chat, user_data_store):
+    # ✔ الإصلاح الجوهري: امنع تسجيل الهاندلرز أكتر من مرة على نفس الكلاينت.
+    # ده كان السبب اللي بيخلي الأوامر ترد 3 مرات لما الجلسة تنقطع وترجع،
+    # لأن keep_alive_monitor كان بينادي start_userbot تاني فيتسجلوا تاني.
+    if getattr(client, "_handlers_registered", False):
+        logging.info("ℹ️ الهاندلرز متسجلة قبل كده على الكلاينت ده — هنتخطى التسجيل")
+        # نضمن إن الكلاينت متصل ونسيب الهاندلرز القديمة شغالة
+        try:
+            if not client.is_connected():
+                await client.connect()
+        except Exception as e:
+            logging.error(f"✘ فشل إعادة الاتصال داخل start_userbot: {e}")
+        # نفضل مستنيين عشان ما نخرجش ونخلّي الـ task يتنهي
+        try:
+            await client.run_until_disconnected()
+        except Exception as e:
+            logging.error(f"✘ run_until_disconnected انتهى: {e}")
+        return
+
     me = await client.get_me()
     owner_id = me.id
     logging.info(f"✔ يوزربوت شغال: {me.first_name} ({owner_id})")
     print(f"✔ يوزربوت شغال: {me.first_name} ({owner_id})")
+
+    # ✔ deduplication للأحداث: لو نفس message id جه مرتين، نتجاهله
+    processed_event_ids = set()
+    processed_order = []
+
+    def _seen(event):
+        try:
+            key = (event.chat_id, event.id)
+        except Exception:
+            return False
+        if key in processed_event_ids:
+            return True
+        processed_event_ids.add(key)
+        processed_order.append(key)
+        # نحافظ على حجم محدود (آخر 2000 حدث)
+        if len(processed_order) > 2000:
+            old_key = processed_order.pop(0)
+            processed_event_ids.discard(old_key)
+        return False
+
+    # ✔ Wrapper لتغليف client.on بحيث يفحص deduplication تلقائياً
+    _original_on = client.on
+    def _safe_on(event_filter):
+        def decorator(handler):
+            async def wrapped(event):
+                try:
+                    if _seen(event):
+                        return
+                except Exception:
+                    pass
+                return await handler(event)
+            wrapped.__name__ = getattr(handler, "__name__", "handler")
+            return _original_on(event_filter)(wrapped)
+        return decorator
+    client.on = _safe_on
 
     # ══ الحالات الداخلية ══
     muted_admins = {}
@@ -1332,5 +1385,14 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
         except Exception as e:
             logging.error(f"✘ خطأ تخزين: {e}")
 
+    # ✔ علامة إن الهاندلرز اتسجلت — لمنع التسجيل مرة تانية لو start_userbot اتنادى تاني
+    client._handlers_registered = True
+
     logging.info(f"✔ كل الهاندلرز اشتغلوا - {me.first_name}")
     print(f"✔ كل الهاندلرز اشتغلوا - {me.first_name}")
+
+    # ✔ نفضل مستنيين عشان الـ task يعيش طول ما الكلاينت متصل
+    try:
+        await client.run_until_disconnected()
+    except Exception as e:
+        logging.error(f"✘ run_until_disconnected: {e}")
