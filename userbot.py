@@ -1205,17 +1205,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 pass
 
             caption = (
-                f"**
-╭────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤
-│╭───────────⟢
-╞╡   Date of establishment 2022
-╞╡ 
-╞╡This is the simplest thing we have
-│╰────────────╮
-│╭────────────╯
-╞╡      Source code in Python
-│╰───────────⟢
-╰────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤**\n\n"
+                f"**\n╭────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤\n│╭───────────⟢\n╞╡   Date of establishment 2022\n╞╡ \n╞╡This is the simplest thing we have\n│╰────────────╮\n│╭────────────╯\n╞╡      Source code in Python\n│╰───────────⟢\n╰────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤**\n\n"
                 f" [{dev_name}](tg://user?id={DEVELOPER_ID})"
             )
 
@@ -1259,17 +1249,7 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             # لو البوت مش في الجروب أو فشل → اليوزربوت يبعت markdown بدون أزرار
             if not sent_via_bot:
                 fallback = (
-                    f"**
-╭────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤
-│╭───────────⟢
-╞╡   Date of establishment 2022
-╞╡ 
-╞╡This is the simplest thing we have
-│╰────────────╮
-│╭────────────╯
-╞╡      Source code in Python
-│╰───────────⟢
-╰────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤**\n\n"
+                    f"**\n╭────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤\n│╭───────────⟢\n╞╡   Date of establishment 2022\n╞╡ \n╞╡This is the simplest thing we have\n│╰────────────╮\n│╭────────────╯\n╞╡      Source code in Python\n│╰───────────⟢\n╰────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤**\n\n"
                     f" [{dev_name}](tg://user?id={DEVELOPER_ID})"
                 )
                 await event.reply(fallback, parse_mode='markdown')
