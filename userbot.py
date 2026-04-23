@@ -308,40 +308,53 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
     # ══════════════════════════════════════════
     @client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
     async def auto_welcome(event):
-        if not welcome_state["active"]:
-            return
-        sender_id = event.sender_id
-        if sender_id in welcomed_users or sender_id in accepted_users:
-            return
-        sender = await event.get_sender()
-        if not sender or getattr(sender, 'bot', False):
-            return
-
-        await _send_welcome_to(event.chat_id, sender_id)
+        try:
+            if not welcome_state["active"]:
+                return
+            sender_id = event.sender_id
+            if sender_id in welcomed_users or sender_id in accepted_users:
+                return
+            # تجاهل النفس
+            me = await client.get_me()
+            if sender_id == me.id:
+                return
+            sender = await event.get_sender()
+            if not sender or getattr(sender, 'bot', False):
+                return
+            logging.info(f"👋 محاولة ترحيب user_id={sender_id} في chat={event.chat_id}")
+            sent = await _send_welcome_to(event.chat_id, sender_id)
+            if sent:
+                logging.info(f"✔ تم إرسال الترحيب لـ {sender_id}")
+            else:
+                logging.error(f"✘ ترحيب فشل للـ {sender_id}")
+        except Exception as e:
+            logging.error(f"✘ auto_welcome error: {e}", exc_info=True)
 
     async def _send_welcome_to(chat_id, sender_id=None):
         """يبعت رسالة الترحيب لأي شات — مع دعم Markdown inline links [نص](رابط)."""
+        from telethon.tl.custom import Button
+
         welcome_text = welcome_state["text"] + f"\n\n{SOURCE_TAG}"
-        # نفرض markdown دايماً لو المستخدم اختار markdown أو سايبه افتراضي
-        # عشان الـ [نص](رابط) يتحول لينك قابل للضغط
         pm = welcome_state["parse_mode"] or "markdown"
 
-        # بناء الأزرار (Inline URL Buttons)
-        from telethon.tl.types import KeyboardButtonUrl
+        # بناء الأزرار باستخدام Button.url (الطريقة الصحيحة في Telethon)
         btn_row = []
         if welcome_state["btn_custom"]["active"] and welcome_state["btn_custom"]["url"]:
-            btn_row.append(KeyboardButtonUrl(
-                text=welcome_state["btn_custom"]["text"] or "🔗 رابط",
-                url=welcome_state["btn_custom"]["url"]
+            btn_row.append(Button.url(
+                welcome_state["btn_custom"]["text"] or "🔗 رابط",
+                welcome_state["btn_custom"]["url"]
             ))
         if welcome_state["btn_source"]["active"]:
-            btn_row.append(KeyboardButtonUrl(
-                text=welcome_state["btn_source"]["text"],
-                url=welcome_state["btn_source"]["url"]
+            btn_row.append(Button.url(
+                welcome_state["btn_source"]["text"],
+                welcome_state["btn_source"]["url"]
             ))
         buttons = [btn_row] if btn_row else None
 
         sent = None
+        last_error = None
+
+        # محاولة 1: ميديا + أزرار + parse_mode المختار
         try:
             media = welcome_state["photo"] if welcome_state["use_photo"] else welcome_state["gif"]
             if media:
@@ -356,20 +369,28 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                     parse_mode=pm, buttons=buttons, link_preview=False
                 )
         except Exception as e:
-            logging.error(f"✘ خطأ ترحيب (محاولة 1): {e}")
-            # محاولة احتياطية: ابعت بدون ميديا وبدون أزرار وبـ markdown صريح
+            last_error = e
+            logging.warning(f"⚠ ترحيب محاولة 1 فشلت: {e}")
+
+        # محاولة 2: نص + أزرار بدون ميديا
+        if sent is None:
             try:
                 sent = await client.send_message(
                     chat_id, welcome_text,
-                    parse_mode="markdown", link_preview=False
+                    parse_mode=pm, buttons=buttons, link_preview=False
                 )
-            except Exception as e2:
-                # محاولة أخيرة: نص خام
-                try:
-                    sent = await client.send_message(chat_id, welcome_text)
-                except Exception as e3:
-                    logging.error(f"✘ فشل ترحيب نهائي: {e3}")
-                    return None
+            except Exception as e:
+                last_error = e
+                logging.warning(f"⚠ ترحيب محاولة 2 فشلت: {e}")
+
+        # محاولة 3: نص فقط بدون أزرار وبدون parse_mode
+        if sent is None:
+            try:
+                sent = await client.send_message(chat_id, welcome_text)
+            except Exception as e:
+                last_error = e
+                logging.error(f"✘ ترحيب فشل نهائياً: {e}", exc_info=True)
+                return None
 
         if sent and sender_id is not None:
             welcomed_users[sender_id] = sent.id
@@ -639,17 +660,17 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             if len(parts) < 3:
                 await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب صورة <رابط أو file_id>`")
                 return
-            welcome_state["photo"] = parts[2]
+            welcome_state["photo"] = " ".join(parts[2:]).strip()
             welcome_state["use_photo"] = True
-            await reply_or_edit(event, "✔ تم تغيير صورة الترحيب! (بيبعت صورة دلوقتي)")
+            await reply_or_edit(event, f"✔ تم تغيير صورة الترحيب!\n🔗 {welcome_state['photo']}")
             return
         if cmd2 == ".ترحيب gif":
             if len(parts) < 3:
                 await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب gif <رابط أو file_id>`")
                 return
-            welcome_state["gif"] = parts[2]
+            welcome_state["gif"] = " ".join(parts[2:]).strip()
             welcome_state["use_photo"] = False
-            await reply_or_edit(event, "✔ تم تغيير GIF الترحيب!")
+            await reply_or_edit(event, f"✔ تم تغيير GIF الترحيب!\n🔗 {welcome_state['gif']}")
             return
 
         # ════ جرب الترحيب فوراً (إرسال للنفس عشان تتأكد إنه شغال) ════
