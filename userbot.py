@@ -1092,12 +1092,25 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
         sleep_replied.add(event.chat_id)
 
     # ══════════════════════════════════════════
-    #    رد سورس بأزرار inline من اليوزربوت
+    #    رد سورس - نص ماركدون مع تحكم تشغيل/تعطيل
     # ══════════════════════════════════════════
     DEVELOPER_ID = 1923931101
+    source_state = {"active": True}
+
+    @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(سورس تشغيل|سورس ايقاف)$'))
+    async def source_toggle(event):
+        cmd = event.raw_text.strip()
+        if cmd == ".سورس تشغيل":
+            source_state["active"] = True
+            await reply_or_edit(event, "✔ تم تفعيل رد السورس!")
+        elif cmd == ".سورس ايقاف":
+            source_state["active"] = False
+            await reply_or_edit(event, "🔴 تم تعطيل رد السورس!")
 
     @client.on(events.NewMessage(incoming=True, pattern=r'(?i)^سورس$'))
     async def source_reply(event):
+        if not source_state["active"]:
+            return
         if event.sender_id == owner_id:
             return
         try:
@@ -1122,27 +1135,23 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 f"│╭────────────╯\n"
                 f"╞╡      Source code in Python\n"
                 f"│╰───────────⟢\n"
-                f"╰────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤**"
+                f"╰────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤**\n\n"
+                f"👨‍💻 [{dev_name}]({dev_url})\n"
+                f"🔗 [𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆 🔥](https://t.me/FY_TF)"
             )
-
-            # ✔ أزرار inline من اليوزربوت مباشرة
-            from telethon import Button
-            buttons = [
-                [Button.url(f"👨‍💻 {dev_name}", dev_url)],
-                [Button.url("𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆 🔥", "https://t.me/FY_TF")],
-            ]
 
             await client.send_message(
                 event.chat_id,
                 caption,
                 parse_mode='markdown',
-                buttons=buttons,
-                reply_to=event.id
+                reply_to=event.id,
+                link_preview=False
             )
 
         except Exception as e:
             logging.error(f"✘ خطأ سورس: {e}")
 
+    # ══════════════════════════════════════════
     # ══════════════════════════════════════════
     #    تخزين الرسائل - خاص / رد / منشن
     # ══════════════════════════════════════════
