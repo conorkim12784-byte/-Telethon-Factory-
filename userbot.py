@@ -1223,66 +1223,99 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
         if event.sender_id == owner_id:
             return
         try:
-            bot_token = user_data_store.get('bot_token', '')
             dev_name = "المطور"
+            dev_username = None
             try:
                 dev_entity = await client.get_entity(DEVELOPER_ID)
                 dev_name = getattr(dev_entity, 'first_name', '') or "المطور"
+                dev_username = getattr(dev_entity, 'username', None)
             except Exception:
                 pass
 
+            # ✔ نص الرسالة
             caption = (
-                f"**\n╭────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤\n│╭───────────⟢\n╞╡   Date of establishment 2022\n╞╡ \n╞╡This is the simplest thing we have\n│╰────────────╮\n│╭────────────╯\n╞╡      Source code in Python\n│╰───────────⟢\n╰────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤**\n\n"
-                f" [{dev_name}](tg://user?id={DEVELOPER_ID})"
+                f"**╭────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤\n"
+                f"│╭───────────⟢\n"
+                f"╞╡   Date of establishment 2022\n"
+                f"╞╡ \n"
+                f"╞╡This is the simplest thing we have\n"
+                f"│╰────────────╮\n"
+                f"│╭────────────╯\n"
+                f"╞╡      Source code in Python\n"
+                f"│╰───────────⟢\n"
+                f"╰────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤**"
             )
 
-            sent_via_bot = False
+            # ✔ بناء الأزرار — نصف اليوزربوت يبعتها مباشرة
+            from telethon.tl.types import KeyboardButtonUrl, KeyboardButtonRow
+            from telethon.tl.types import ReplyInlineMarkup
 
-            if bot_token:
-                import aiohttp, json
-                keyboard = {
-                    "inline_keyboard": [[
-                        {"text": f"{dev_name}", "url": f"tg://user?id={DEVELOPER_ID}"}
-                    ]]
-                }
-                try:
-                    async with aiohttp.ClientSession() as session:
-                        if SOURCE_VIDEO:
-                            resp = await session.post(
-                                f"https://api.telegram.org/bot{bot_token}/sendVideo",
-                                json={
-                                    "chat_id": event.chat_id,
-                                    "video": SOURCE_VIDEO,
-                                    "caption": caption,
-                                    "parse_mode": "Markdown",
-                                    "reply_markup": json.dumps(keyboard)
-                                }
-                            )
-                        else:
-                            resp = await session.post(
-                                f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                                json={
-                                    "chat_id": event.chat_id,
-                                    "text": caption,
-                                    "parse_mode": "Markdown",
-                                    "reply_markup": json.dumps(keyboard)
-                                }
-                            )
-                        result = await resp.json()
-                        sent_via_bot = result.get("ok", False)
-                except Exception:
-                    sent_via_bot = False
+            dev_url = f"https://t.me/{dev_username}" if dev_username else f"tg://user?id={DEVELOPER_ID}"
 
-            # لو البوت مش في الجروب أو فشل → اليوزربوت يبعت markdown بدون أزرار
-            if not sent_via_bot:
-                fallback = (
-                    f"**\n╭────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤\n│╭───────────⟢\n╞╡   Date of establishment 2022\n╞╡ \n╞╡This is the simplest thing we have\n│╰────────────╮\n│╭────────────╯\n╞╡      Source code in Python\n│╰───────────⟢\n╰────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤**\n\n"
-                    f" [{dev_name}](tg://user?id={DEVELOPER_ID})"
+            # صف أول: زر المطور (دايماً موجود)
+            buttons_rows = [
+                KeyboardButtonRow(buttons=[
+                    KeyboardButtonUrl(text=f"👨‍💻 {dev_name}", url=dev_url)
+                ])
+            ]
+
+            # زر السورس تلاشاني لو مفعل
+            if welcome_state["btn_source"]["active"]:
+                buttons_rows.append(
+                    KeyboardButtonRow(buttons=[
+                        KeyboardButtonUrl(
+                            text=welcome_state["btn_source"]["text"],
+                            url=welcome_state["btn_source"]["url"]
+                        )
+                    ])
                 )
-                await event.reply(fallback, parse_mode='markdown')
+
+            # زر مخصص لو موجود ومفعل
+            if welcome_state["btn_custom"]["active"] and welcome_state["btn_custom"]["url"]:
+                buttons_rows.append(
+                    KeyboardButtonRow(buttons=[
+                        KeyboardButtonUrl(
+                            text=welcome_state["btn_custom"]["text"] or "🔗 رابط",
+                            url=welcome_state["btn_custom"]["url"]
+                        )
+                    ])
+                )
+
+            markup = ReplyInlineMarkup(rows=buttons_rows)
+
+            if SOURCE_VIDEO:
+                try:
+                    await client.send_file(
+                        event.chat_id,
+                        SOURCE_VIDEO,
+                        caption=caption,
+                        parse_mode='markdown',
+                        buttons=markup,
+                        reply_to=event.id
+                    )
+                    return
+                except Exception:
+                    pass
+
+            await client.send_message(
+                event.chat_id,
+                caption,
+                parse_mode='markdown',
+                buttons=markup,
+                reply_to=event.id
+            )
 
         except Exception as e:
             logging.error(f"✘ خطأ سورس: {e}")
+            # fallback بدون أزرار
+            try:
+                await event.reply(
+                    f"**╭────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤\n│╭───────────⟢\n╞╡   Date of establishment 2022\n╞╡ \n╞╡This is the simplest thing we have\n│╰────────────╮\n│╭────────────╯\n╞╡      Source code in Python\n│╰───────────⟢\n╰────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤**",
+                    parse_mode='markdown'
+                )
+            except Exception:
+                pass
+
 
     # ══════════════════════════════════════════
     #    تخزين الرسائل - خاص / رد / منشن
