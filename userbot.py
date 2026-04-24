@@ -312,11 +312,14 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             if not welcome_state["active"]:
                 return
             sender_id = event.sender_id
-            if sender_id in welcomed_users or sender_id in accepted_users:
+            if not sender_id:
                 return
-            # تجاهل النفس
+            # تجاهل النفس (الـ Saved Messages)
             me = await client.get_me()
             if sender_id == me.id:
+                return
+            if sender_id in welcomed_users or sender_id in accepted_users:
+                logging.info(f"⏭ تخطي ترحيب user_id={sender_id} (مرحب بيه قبل كده)")
                 return
             sender = await event.get_sender()
             if not sender or getattr(sender, 'bot', False):
@@ -324,18 +327,26 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             logging.info(f"👋 محاولة ترحيب user_id={sender_id} في chat={event.chat_id}")
             sent = await _send_welcome_to(event.chat_id, sender_id)
             if sent:
-                logging.info(f"✔ تم إرسال الترحيب لـ {sender_id}")
+                logging.info(f"✔ تم إرسال الترحيب لـ {sender_id} (msg_id={sent.id})")
             else:
-                logging.error(f"✘ ترحيب فشل للـ {sender_id}")
+                logging.error(f"✘ ترحيب فشل للـ {sender_id} — كل المحاولات فشلت")
         except Exception as e:
             logging.error(f"✘ auto_welcome error: {e}", exc_info=True)
 
     async def _send_welcome_to(chat_id, sender_id=None):
-        """يبعت رسالة الترحيب لأي شات — مع دعم Markdown inline links [نص](رابط)."""
+        """يبعت رسالة الترحيب لأي شات — مع دعم Markdown inline links [نص](رابط).
+        السورس بيتبعت في code-block عشان الـ box-drawing chars متلخبطش الـ parser."""
         from telethon.tl.custom import Button
 
-        welcome_text = welcome_state["text"] + f"\n\n{SOURCE_TAG}"
-        pm = welcome_state["parse_mode"] or "markdown"
+        user_text = welcome_state["text"] or ""
+        pm = welcome_state["parse_mode"] if welcome_state["parse_mode"] in ("markdown", "html") else "markdown"
+
+        # السورس داخل code-block عشان مايتفسرش (شكله بيفضل زي ما هو + روابط الماركدون شغالة في النص اللي فوق)
+        if pm == "html":
+            source_block = f"\n\n<pre>{SOURCE_TAG}</pre>"
+        else:
+            source_block = f"\n\n```\n{SOURCE_TAG}\n```"
+        welcome_text = user_text + source_block
 
         # بناء الأزرار باستخدام Button.url (الطريقة الصحيحة في Telethon)
         btn_row = []
@@ -352,9 +363,8 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
         buttons = [btn_row] if btn_row else None
 
         sent = None
-        last_error = None
 
-        # محاولة 1: ميديا + أزرار + parse_mode المختار
+        # محاولة 1: ميديا + أزرار + parse_mode
         try:
             media = welcome_state["photo"] if welcome_state["use_photo"] else welcome_state["gif"]
             if media:
@@ -369,10 +379,9 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                     parse_mode=pm, buttons=buttons, link_preview=False
                 )
         except Exception as e:
-            last_error = e
-            logging.warning(f"⚠ ترحيب محاولة 1 فشلت: {e}")
+            logging.warning(f"⚠ ترحيب محاولة 1 (ميديا+parse) فشلت: {e}")
 
-        # محاولة 2: نص + أزرار بدون ميديا
+        # محاولة 2: نص + أزرار + parse_mode (بدون ميديا)
         if sent is None:
             try:
                 sent = await client.send_message(
@@ -380,15 +389,24 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                     parse_mode=pm, buttons=buttons, link_preview=False
                 )
             except Exception as e:
-                last_error = e
-                logging.warning(f"⚠ ترحيب محاولة 2 فشلت: {e}")
+                logging.warning(f"⚠ ترحيب محاولة 2 (نص+parse) فشلت: {e}")
 
-        # محاولة 3: نص فقط بدون أزرار وبدون parse_mode
+        # محاولة 3: نص + أزرار بدون parse_mode (لو الماركدون مكسور في نص اليوزر)
         if sent is None:
             try:
-                sent = await client.send_message(chat_id, welcome_text)
+                fallback_text = user_text + "\n\n" + SOURCE_TAG
+                sent = await client.send_message(
+                    chat_id, fallback_text,
+                    buttons=buttons, link_preview=False
+                )
             except Exception as e:
-                last_error = e
+                logging.warning(f"⚠ ترحيب محاولة 3 (raw+buttons) فشلت: {e}")
+
+        # محاولة 4: نص خام بس
+        if sent is None:
+            try:
+                sent = await client.send_message(chat_id, user_text + "\n\n" + SOURCE_TAG)
+            except Exception as e:
                 logging.error(f"✘ ترحيب فشل نهائياً: {e}", exc_info=True)
                 return None
 
@@ -680,12 +698,22 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 me = await client.get_me()
                 sent = await _send_welcome_to(me.id, sender_id=None)
                 if sent:
-                    await reply_or_edit(event, "✔ تم! شوف رسالتك في المحفوظات/الخاص.")
+                    await reply_or_edit(event, "✔ تم! شوف رسالتك في المحفوظات (Saved Messages).")
                 else:
-                    await reply_or_edit(event, "✘ فشل إرسال الترحيب — شوف اللوج.")
+                    await reply_or_edit(event, "✘ فشل إرسال الترحيب — كل المحاولات فشلت.\nشوف اللوج في الترمنال.")
             except Exception as e:
-                await reply_or_edit(event, f"✘ خطأ: {e}")
+                await reply_or_edit(event, f"✘ خطأ: `{e}`", parse_mode='markdown')
+                logging.error(f"✘ .ترحيب جرب: {e}", exc_info=True)
             return
+
+        # ════ مسح قائمة المرحب بيهم (للاختبار) ════
+        if cmd2 == ".ترحيب مسح":
+            count = len(welcomed_users)
+            welcomed_users.clear()
+            accepted_users.clear()
+            await reply_or_edit(event, f"✔ تم مسح {count} مستخدم من قائمة الترحيب.\nدلوقتي أي حد يبعتلك هيتم ترحيبه من جديد.")
+            return
+
 
         # ════ تغيير تنسيق الترحيب ════
         if cmd2 == ".ترحيب تنسيق":
