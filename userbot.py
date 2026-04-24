@@ -1232,7 +1232,9 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             except Exception:
                 pass
 
-            # ✔ نص الرسالة
+            dev_url = f"https://t.me/{dev_username}" if dev_username else f"tg://user?id={DEVELOPER_ID}"
+
+            # ✔ نص الرسالة الأساسي
             caption = (
                 f"**╭────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤\n"
                 f"│╭───────────⟢\n"
@@ -1243,45 +1245,20 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 f"│╭────────────╯\n"
                 f"╞╡      Source code in Python\n"
                 f"│╰───────────⟢\n"
-                f"╰────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤**"
+                f"╰────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤**\n\n"
             )
 
-            # ✔ بناء الأزرار — نصف اليوزربوت يبعتها مباشرة
-            from telethon.tl.types import KeyboardButtonUrl, KeyboardButtonRow
-            from telethon.tl.types import ReplyInlineMarkup
+            # ✔ زر المطور كنص ماركدون
+            caption += f"👨‍💻 [{dev_name}]({dev_url})"
 
-            dev_url = f"https://t.me/{dev_username}" if dev_username else f"tg://user?id={DEVELOPER_ID}"
-
-            # صف أول: زر المطور (دايماً موجود)
-            buttons_rows = [
-                KeyboardButtonRow(buttons=[
-                    KeyboardButtonUrl(text=f"👨‍💻 {dev_name}", url=dev_url)
-                ])
-            ]
-
-            # زر السورس تلاشاني لو مفعل
+            # ✔ زر سورس تلاشاني كنص ماركدون لو مفعل
             if welcome_state["btn_source"]["active"]:
-                buttons_rows.append(
-                    KeyboardButtonRow(buttons=[
-                        KeyboardButtonUrl(
-                            text=welcome_state["btn_source"]["text"],
-                            url=welcome_state["btn_source"]["url"]
-                        )
-                    ])
-                )
+                caption += f"\n🔗 [{welcome_state['btn_source']['text']}]({welcome_state['btn_source']['url']})"
 
-            # زر مخصص لو موجود ومفعل
+            # ✔ زر مخصص كنص ماركدون لو موجود ومفعل
             if welcome_state["btn_custom"]["active"] and welcome_state["btn_custom"]["url"]:
-                buttons_rows.append(
-                    KeyboardButtonRow(buttons=[
-                        KeyboardButtonUrl(
-                            text=welcome_state["btn_custom"]["text"] or "🔗 رابط",
-                            url=welcome_state["btn_custom"]["url"]
-                        )
-                    ])
-                )
-
-            markup = ReplyInlineMarkup(rows=buttons_rows)
+                btn_text = welcome_state["btn_custom"]["text"] or "🔗 رابط"
+                caption += f"\n🔗 [{btn_text}]({welcome_state['btn_custom']['url']})"
 
             if SOURCE_VIDEO:
                 try:
@@ -1290,7 +1267,6 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                         SOURCE_VIDEO,
                         caption=caption,
                         parse_mode='markdown',
-                        buttons=markup,
                         reply_to=event.id
                     )
                     return
@@ -1301,20 +1277,12 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 event.chat_id,
                 caption,
                 parse_mode='markdown',
-                buttons=markup,
-                reply_to=event.id
+                reply_to=event.id,
+                link_preview=False
             )
 
         except Exception as e:
             logging.error(f"✘ خطأ سورس: {e}")
-            # fallback بدون أزرار
-            try:
-                await event.reply(
-                    f"**╭────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤\n│╭───────────⟢\n╞╡   Date of establishment 2022\n╞╡ \n╞╡This is the simplest thing we have\n│╰────────────╮\n│╭────────────╯\n╞╡      Source code in Python\n│╰───────────⟢\n╰────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤**",
-                    parse_mode='markdown'
-                )
-            except Exception:
-                pass
 
 
     # ══════════════════════════════════════════
