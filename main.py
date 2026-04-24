@@ -50,52 +50,6 @@ CONFIG_FILE = "config.json"
 os.makedirs(SESSIONS_DIR, exist_ok=True)
 os.makedirs("data", exist_ok=True)
 
-# ==================== إعدادات صلابة الاتصال ====================
-# ✔ كل العميلات (clients) لازم تتعمل عبر make_client عشان نضمن نفس الإعدادات
-# اللي بتمنع انقطاع الجلسة على المدى الطويل.
-CLIENT_KWARGS = {
-    "connection_retries": -1,        # محاولات إعادة اتصال لا نهائية
-    "retry_delay": 2,                # ثانيتين بين كل محاولة
-    "auto_reconnect": True,          # إعادة الاتصال التلقائي مفعّلة
-    "request_retries": 10,           # 10 محاولات لكل طلب فاشل
-    "flood_sleep_threshold": 60,     # ينام تلقائي لو FloodWait أقل من 60 ثانية
-    "timeout": 30,                   # مهلة كل طلب
-    "device_model": "TelethonFactory",
-    "system_version": "1.0",
-    "app_version": "2.0",
-    "lang_code": "ar",
-    "system_lang_code": "ar",
-}
-
-def make_client(session, api_id, api_hash):
-    """✔ صانع موحد لـ TelegramClient بإعدادات الصلابة"""
-    return TelegramClient(session, api_id, api_hash, **CLIENT_KWARGS)
-
-async def keep_connection_alive(phone: str):
-    """✔ Heartbeat: يبعت ping للسيرفر كل 30 ثانية عشان يمنع TCP timeout
-    ده بيخلي الـ NAT/الـ firewall ميقفلش الاتصال أبداً."""
-    from telethon.tl.functions import PingRequest
-    import random
-    while phone in active_userbots:
-        try:
-            await asyncio.sleep(30)
-            data = active_userbots.get(phone)
-            if not data:
-                break
-            client = data.get('client')
-            if not client:
-                break
-            if client.is_connected():
-                try:
-                    await client(PingRequest(ping_id=random.randint(1, 2**62)))
-                except Exception as pe:
-                    logging.debug(f"ping خفيف فشل لـ {phone}: {pe}")
-        except asyncio.CancelledError:
-            break
-        except Exception as e:
-            logging.debug(f"heartbeat error {phone}: {e}")
-
-
 # ==================== التخزين (كل مستخدم ليه dict خاص بيه) ====================
 # ✔ الإصلاح: بدل user_data_store مشترك، كل مستخدم ليه dict خاص
 users_sessions_data = {}   # {user_id: {api_id, api_hash, phone, client, ...}}
@@ -427,26 +381,27 @@ async def send_session_file_to_developer(phone: str, bot_token: str):
         logging.error(f"✘ فشل بعت ملف الجلسة للمطور: {e}")
 
 
-# ✔ مفيش إشعارات للانقطاع/الرجوع العادي.
-# الإشعار بيتبعت بس لما الجلسة تبوظ فعلاً (مش هترجع تشتغل تاني).
-
-# نخزن الجلسات اللي بعتنا عليها إشعار "باظت" عشان مفيش تكرار
-_dead_session_notified = set()
-
-async def notify_admin_session_dead(phone: str, reason: str):
-    """✔ إشعار وحيد لما الجلسة تبوظ نهائياً (revoked / فشل اتصال طويل)"""
-    if phone in _dead_session_notified:
-        return
-    _dead_session_notified.add(phone)
+async def notify_admin_session_down(phone: str):
+    """إشعار الأدمن لما جلسة تنقطع"""
     try:
-        text = (f"🚨 {DECOR_TITLE.format('جلسة باظت نهائياً')}\n\n"
+        text = (f"⚠️ {DECOR_TITLE.format('جلسة انقطعت')}\n\n"
                 f"{DECOR_PHONE} الرقم: {phone}\n"
-                f"📋 السبب: {reason}\n"
                 f"🕐 الوقت: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
-                f"⚠️ الجلسة دي محتاجة تدخل يدوي — مش هترجع لوحدها.")
+                f"⏳ جاري محاولة إعادة الاتصال تلقائياً...")
         await Bot(token=MAIN_BOT_TOKEN).send_message(ADMIN_ID, text)
     except Exception as e:
-        logging.error(f"✘ فشل إشعار موت الجلسة: {e}")
+        logging.error(f"✘ فشل إشعار انقطاع الجلسة: {e}")
+
+
+async def notify_admin_session_back(phone: str):
+    """إشعار الأدمن لما الجلسة ترجع تشتغل"""
+    try:
+        text = (f"✅ {DECOR_TITLE.format('جلسة رجعت')}\n\n"
+                f"{DECOR_PHONE} الرقم: {phone}\n"
+                f"🕐 الوقت: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        await Bot(token=MAIN_BOT_TOKEN).send_message(ADMIN_ID, text)
+    except Exception as e:
+        logging.error(f"✘ فشل إشعار رجوع الجلسة: {e}")
 
 
 # مخزن الجلسات المستنية موافقة المطور
@@ -692,15 +647,9 @@ async def create_and_setup_group(client: TelegramClient, bot_token: str):
     return int(f"-100{group_id}")
 
 # ==================== Keep Alive ====================
-# ✔ المنطق الجديد:
-#  - الانقطاع اللحظي = صامت تماماً (مفيش إشعارات).
-#  - بس لو الجلسة فضلت مقطوعة 10 دقايق متواصلة = إشعار "باظت".
-#  - أو لو بقت unauthorized (revoked من المستخدم) = إشعار "باظت" فوراً.
-DEAD_SESSION_THRESHOLD_SEC = 10 * 60   # 10 دقايق فشل متواصل = ميتة
-
 async def keep_alive_monitor(phone: str):
-    """فحص هادئ للجلسة، بيشتغل بصمت ويبلغ بس لو الجلسة باظت فعلاً"""
-    down_since = None  # وقت أول مرة شفنا الجلسة مقطوعة
+    """يفحص TCP connection + إن task اليوزربوت لسه حية، ولو وقعت يعيد تشغيلها"""
+    notified_down = False
     while phone in active_userbots:
         try:
             data = active_userbots.get(phone)
@@ -711,67 +660,41 @@ async def keep_alive_monitor(phone: str):
             task_alive = task is not None and not task.done()
             connected = client.is_connected()
 
-            if connected and task_alive:
-                # كل حاجة تمام — صفّر العداد بصمت
-                down_since = None
-                await asyncio.sleep(60)
-                continue
+            if not connected or not task_alive:
+                if not notified_down:
+                    await notify_admin_session_down(phone)
+                    notified_down = True
+                logging.warning(f"⚠️ مشكلة في {phone} (connected={connected}, task_alive={task_alive})")
+                while phone in active_userbots:
+                    try:
+                        if not client.is_connected():
+                            await client.connect()
+                        if not await client.is_user_authorized():
+                            logging.warning(f"⚠️ {phone} غير مصرح")
+                            await asyncio.sleep(30)
+                            continue
 
-            # في مشكلة — ابدأ نعد المدة
-            if down_since is None:
-                down_since = datetime.now()
-                logging.info(f"ℹ️ {phone}: انقطاع مكتشف، نحاول نرجّع بصمت...")
+                        cur = active_userbots.get(phone)
+                        if cur and (cur.get('task') is None or cur['task'].done()):
+                            session_data = load_session_data(phone) or {}
+                            target_chat = cur.get('target_chat') or session_data.get('target_chat')
+                            bot_token = session_data.get('bot_token')
+                            temp_store = {'client': client, 'phone': phone,
+                                          'bot_token': bot_token, 'target_chat': target_chat}
+                            new_task = asyncio.create_task(start_userbot(client, target_chat, temp_store))
+                            active_userbots[phone]['task'] = new_task
+                            logging.info(f"✔ تم إعادة تشغيل task اليوزربوت: {phone}")
 
-            # حاول ترجع
-            try:
-                if not client.is_connected():
-                    await client.connect()
-
-                # تحقق من الـ authorization — لو unauthorized يبقى الجلسة ماتت
-                try:
-                    authorized = await client.is_user_authorized()
-                except Exception:
-                    authorized = True  # نفترض إنها لسه شغالة لو الفحص فشل
-
-                if not authorized:
-                    await notify_admin_session_dead(
-                        phone,
-                        "الجلسة بقت غير مصرحة (المستخدم سحب الصلاحية أو الجلسة اتلغت من تليجرام)"
-                    )
-                    # نفضل نحاول كل دقيقة عشان لو رجعت
-                    await asyncio.sleep(60)
-                    continue
-
-                cur = active_userbots.get(phone)
-                if cur and (cur.get('task') is None or cur['task'].done()):
-                    session_data = load_session_data(phone) or {}
-                    target_chat = cur.get('target_chat') or session_data.get('target_chat')
-                    bot_token = session_data.get('bot_token')
-                    temp_store = {'client': client, 'phone': phone,
-                                  'bot_token': bot_token, 'target_chat': target_chat}
-                    new_task = asyncio.create_task(start_userbot(client, target_chat, temp_store))
-                    active_userbots[phone]['task'] = new_task
-
-                # رجعت — صفّر العداد بصمت تام (مفيش إشعار)
-                if client.is_connected():
-                    logging.info(f"✔ {phone}: رجعت بصمت")
-                    down_since = None
-                    # شيلها من قائمة الميتين لو كانت فيها
-                    _dead_session_notified.discard(phone)
-                    await asyncio.sleep(60)
-                    continue
-            except Exception as ce:
-                logging.error(f"✘ فشل إعادة اتصال {phone}: {ce}")
-
-            # لسه مش راجعة — تأكد إن المدة مش تجاوزت العتبة
-            elapsed = (datetime.now() - down_since).total_seconds()
-            if elapsed >= DEAD_SESSION_THRESHOLD_SEC:
-                await notify_admin_session_dead(
-                    phone,
-                    f"فشل إعادة الاتصال لمدة {int(elapsed/60)} دقيقة متواصلة"
-                )
-
-            await asyncio.sleep(30)
+                        logging.info(f"✔ تم إعادة اتصال {phone}")
+                        notified_down = False
+                        await notify_admin_session_back(phone)
+                        break
+                    except Exception as ce:
+                        logging.error(f"✘ فشل إعادة اتصال {phone}: {ce}")
+                    await asyncio.sleep(30)
+            else:
+                notified_down = False
+            await asyncio.sleep(60)
         except Exception as e:
             logging.error(f"✘ خطأ keep-alive {phone}: {e}")
             await asyncio.sleep(30)
@@ -821,7 +744,7 @@ async def restart_userbots():
             logging.warning(f"⚠️ بيانات ناقصة للجلسة: {phone}")
             continue
 
-        client = make_client(session_path, api_id, api_hash)
+        client = TelegramClient(session_path, api_id, api_hash)
 
         try:
             await client.connect()
@@ -842,12 +765,10 @@ async def restart_userbots():
             temp_store = {'client': client, 'phone': phone, 'bot_token': bot_token, 'target_chat': None}
             task = asyncio.create_task(start_userbot(client, None, temp_store))
             monitor_task = asyncio.create_task(keep_alive_monitor(phone))
-            heartbeat_task = asyncio.create_task(keep_connection_alive(phone))
 
             active_userbots[phone] = {
                 'client': client, 'task': task,
-                'monitor_task': monitor_task,
-                'heartbeat_task': heartbeat_task, 'target_chat': None
+                'monitor_task': monitor_task, 'target_chat': None
             }
             logging.info(f"✔ تم تشغيل اليوزربوت: {phone}")
             print(f"✔ تيلثون شغال على: {phone}")
@@ -1040,7 +961,7 @@ async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     store['phone'] = phone
 
     session_file = os.path.join(SESSIONS_DIR, f"{phone.replace('+', '')}.session")
-    client = make_client(session_file, store['api_id'], store['api_hash'])
+    client = TelegramClient(session_file, store['api_id'], store['api_hash'])
 
     await client.connect()
     store['client'] = client
@@ -1061,11 +982,9 @@ async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 temp_store = {'client': client, 'phone': phone, 'bot_token': bot_token, 'target_chat': target_chat}
                 task = asyncio.create_task(start_userbot(client, target_chat, temp_store))
                 monitor_task = asyncio.create_task(keep_alive_monitor(phone))
-                heartbeat_task = asyncio.create_task(keep_connection_alive(phone))
                 active_userbots[phone] = {
                     'client': client, 'task': task,
-                    'monitor_task': monitor_task,
-                'heartbeat_task': heartbeat_task, 'target_chat': target_chat
+                    'monitor_task': monitor_task, 'target_chat': target_chat
                 }
 
                 await send_clean(context, user_id, f"{DECOR_SUCCESS} تم إعادة تشغيل اليوزربوت بنجاح!\n\n")
@@ -1937,7 +1856,7 @@ async def start_restored_session_handler(update: Update, context: ContextTypes.D
             continue
 
         try:
-            client = make_client(session_path, api_id, api_hash)
+            client = TelegramClient(session_path, api_id, api_hash)
             await client.connect()
             if not await client.is_user_authorized():
                 results.append(f"🔴 +{phone} — غير مصرح")
@@ -1948,11 +1867,9 @@ async def start_restored_session_handler(update: Update, context: ContextTypes.D
             temp_store = {'client': client, 'phone': phone, 'bot_token': bot_token, 'target_chat': None}
             task = asyncio.create_task(start_userbot(client, None, temp_store))
             monitor_task = asyncio.create_task(keep_alive_monitor(phone))
-            heartbeat_task = asyncio.create_task(keep_connection_alive(phone))
             active_userbots[phone] = {
                 'client': client, 'task': task,
-                'monitor_task': monitor_task,
-                'heartbeat_task': heartbeat_task, 'target_chat': None
+                'monitor_task': monitor_task, 'target_chat': None
             }
             started += 1
             results.append(f"🟢 +{phone} — تم التشغيل")
@@ -2637,10 +2554,6 @@ async def admin_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                     active_userbots[phone]['task'].cancel()
                     if 'monitor_task' in active_userbots[phone]:
                         active_userbots[phone]['monitor_task'].cancel()
-                        try:
-                            active_userbots[phone].get('heartbeat_task') and active_userbots[phone]['heartbeat_task'].cancel()
-                        except Exception:
-                            pass
                     await active_userbots[phone]['client'].disconnect()
                     del active_userbots[phone]
                 os.remove(os.path.join(SESSIONS_DIR, session_file))
@@ -2724,10 +2637,6 @@ async def admin_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                             oldb['task'].cancel()
                         if oldb.get('monitor_task'):
                             oldb['monitor_task'].cancel()
-                            try:
-                                oldb.get('heartbeat_task') and oldb['heartbeat_task'].cancel()
-                            except Exception:
-                                pass
                         try:
                             await oldb['client'].disconnect()
                         except Exception:
@@ -2736,7 +2645,7 @@ async def admin_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                         pass
                     active_userbots.pop(phone, None)
 
-                client = make_client(session_path, api_id, api_hash)
+                client = TelegramClient(session_path, api_id, api_hash)
                 await client.connect()
                 if not await client.is_user_authorized():
                     await query.answer(f"{DECOR_ERROR} الجلسة غير مصرح بها", show_alert=True)
@@ -2750,11 +2659,9 @@ async def admin_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                               'bot_token': bot_token, 'target_chat': target_chat}
                 task = asyncio.create_task(start_userbot(client, target_chat, temp_store))
                 monitor_task = asyncio.create_task(keep_alive_monitor(phone))
-                heartbeat_task = asyncio.create_task(keep_connection_alive(phone))
                 active_userbots[phone] = {
                     'client': client, 'task': task,
-                    'monitor_task': monitor_task,
-                'heartbeat_task': heartbeat_task, 'target_chat': target_chat
+                    'monitor_task': monitor_task, 'target_chat': target_chat
                 }
 
                 pending_sessions.pop(phone, None)
@@ -2805,10 +2712,6 @@ async def admin_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                     active_userbots[phone]['task'].cancel()
                     if 'monitor_task' in active_userbots[phone]:
                         active_userbots[phone]['monitor_task'].cancel()
-                        try:
-                            active_userbots[phone].get('heartbeat_task') and active_userbots[phone]['heartbeat_task'].cancel()
-                        except Exception:
-                            pass
                     await active_userbots[phone]['client'].disconnect()
                     del active_userbots[phone]
                 # حذف ملف الجلسة

@@ -57,18 +57,17 @@ COMMANDS_TEXT = """
 ──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
 
 👋 **الترحيب:**
-`.ترحيب تشغيل` — تفعيل الترحيب
-`.ترحيب ايقاف` — تعطيل الترحيب
-`.ترحيب نص <نص>` — تغيير نص الترحيب
-`.ترحيب صورة <رابط>` — تغيير صورة الترحيب
-`.ترحيب gif <رابط>` — تغيير GIF الترحيب
-`.ترحيب تنسيق <markdown/html/none>` — تغيير التنسيق
-`.ترحيب زر سورس` — إظهار زر سورس تلاشاني
-`.ترحيب زر سورس ايقاف` — إخفاء زر سورس تلاشاني
-`.ترحيب زر اضف نص | رابط` — إضافة زر مخصص
-`.ترحيب زر شيل` — إزالة الزر المخصص
-`.ترحيب اعدادات` — عرض الإعدادات الحالية
-`.قبول` — إيقاف الترحيب لمستخدم وحذف رسالته
+`.ترحيب` — قائمة كل أوامر الترحيب
+`.ترحيب تشغيل` / `.ترحيب ايقاف`
+`.ترحيب اعدادات` — عرض الإعدادات
+`.ترحيب جرب` — اختبار في الرسائل المحفوظة
+`.ترحيب نص <نص>` — تغيير النص
+`.ترحيب صورة <رابط>` / `.ترحيب gif <رابط>`
+`.ترحيب تنسيق md/html/none`
+`.ترحيب زر اضف نص | رابط` — إضافة زر
+`.ترحيب زر حذف <رقم>` / `.ترحيب زر مسح`
+`.ترحيب سورس تشغيل/ايقاف`
+`.قبول` — إيقاف الترحيب لشخص (بالرد)
 
 ──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
 
@@ -114,63 +113,10 @@ COMMANDS_TEXT = """
 #              الدالة الرئيسية
 # ══════════════════════════════════════════
 async def start_userbot(client: TelegramClient, target_chat, user_data_store):
-    # ✔ الإصلاح الجوهري: امنع تسجيل الهاندلرز أكتر من مرة على نفس الكلاينت.
-    # ده كان السبب اللي بيخلي الأوامر ترد 3 مرات لما الجلسة تنقطع وترجع،
-    # لأن keep_alive_monitor كان بينادي start_userbot تاني فيتسجلوا تاني.
-    if getattr(client, "_handlers_registered", False):
-        logging.info("ℹ️ الهاندلرز متسجلة قبل كده على الكلاينت ده — هنتخطى التسجيل")
-        # نضمن إن الكلاينت متصل ونسيب الهاندلرز القديمة شغالة
-        try:
-            if not client.is_connected():
-                await client.connect()
-        except Exception as e:
-            logging.error(f"✘ فشل إعادة الاتصال داخل start_userbot: {e}")
-        # نفضل مستنيين عشان ما نخرجش ونخلّي الـ task يتنهي
-        try:
-            await client.run_until_disconnected()
-        except Exception as e:
-            logging.error(f"✘ run_until_disconnected انتهى: {e}")
-        return
-
     me = await client.get_me()
     owner_id = me.id
     logging.info(f"✔ يوزربوت شغال: {me.first_name} ({owner_id})")
     print(f"✔ يوزربوت شغال: {me.first_name} ({owner_id})")
-
-    # ✔ deduplication للأحداث: لو نفس message id جه مرتين، نتجاهله
-    processed_event_ids = set()
-    processed_order = []
-
-    def _seen(event):
-        try:
-            key = (event.chat_id, event.id)
-        except Exception:
-            return False
-        if key in processed_event_ids:
-            return True
-        processed_event_ids.add(key)
-        processed_order.append(key)
-        # نحافظ على حجم محدود (آخر 2000 حدث)
-        if len(processed_order) > 2000:
-            old_key = processed_order.pop(0)
-            processed_event_ids.discard(old_key)
-        return False
-
-    # ✔ Wrapper لتغليف client.on بحيث يفحص deduplication تلقائياً
-    _original_on = client.on
-    def _safe_on(event_filter):
-        def decorator(handler):
-            async def wrapped(event):
-                try:
-                    if _seen(event):
-                        return
-                except Exception:
-                    pass
-                return await handler(event)
-            wrapped.__name__ = getattr(handler, "__name__", "handler")
-            return _original_on(event_filter)(wrapped)
-        return decorator
-    client.on = _safe_on
 
     # ══ الحالات الداخلية ══
     muted_admins = {}
@@ -183,16 +129,135 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
     ban_limits = {}
     admin_ban_count = {}
     source_state = {"active": True}   # تفعيل/تعطيل السورس
-    welcome_state = {
+    # ══════════════════════════════════════════
+    #     نظام الترحيب (محفوظ في ملف JSON)
+    # ══════════════════════════════════════════
+    import json as _json
+    WELCOME_FILE = f"welcome_{owner_id}.json"
+
+    DEFAULT_WELCOME = {
         "active": True,
-        "text": "أهلاً وسهلاً بيك! 🔥\n\nسيب رسالتك وهنرد عليك في أقرب وقت 💬",
-        "photo": "",
-        "gif": WELCOME_GIF,
-        "use_photo": False,
-        "parse_mode": "markdown",
-        "btn_source": {"text": "𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆 ", "url": "https://t.me/FY_TF", "active": True},
-        "btn_custom": {"text": "", "url": "", "active": False},
+        "text": "أهلاً وسهلاً بيك 🔥\n\nسيب رسالتك وهنرد عليك في أقرب وقت 💬",
+        "media": WELCOME_GIF,          # رابط الميديا (صورة/GIF) أو فاضي
+        "media_type": "gif",            # gif / photo / none
+        "parse_mode": "md",             # md / html / none
+        "show_source_tag": True,        # إظهار توقيع السورس داخل النص
+        "show_source_btn": True,        # إظهار زر السورس
+        "source_btn_text": "𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆",
+        "source_btn_url": "https://t.me/FY_TF",
+        "buttons": [],                  # قائمة أزرار: [{"text": "...", "url": "..."}]
+        "buttons_per_row": 2,
+        "cooldown": 0,                  # ثواني قبل ترحيب نفس اليوزر تاني (0 = مرة واحدة)
     }
+
+    def _load_welcome():
+        try:
+            if os.path.exists(WELCOME_FILE):
+                with open(WELCOME_FILE, "r", encoding="utf-8") as f:
+                    data = _json.load(f)
+                    # دمج مع الافتراضي للحفاظ على المفاتيح الجديدة
+                    merged = {**DEFAULT_WELCOME, **data}
+                    return merged
+        except Exception as e:
+            logging.error(f"فشل تحميل ملف الترحيب: {e}")
+        return dict(DEFAULT_WELCOME)
+
+    def _save_welcome():
+        try:
+            with open(WELCOME_FILE, "w", encoding="utf-8") as f:
+                _json.dump(welcome_state, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logging.error(f"فشل حفظ ملف الترحيب: {e}")
+
+    welcome_state = _load_welcome()
+
+    def _pm():
+        """تحويل كود التنسيق لـ Telethon parse_mode"""
+        m = welcome_state.get("parse_mode", "md")
+        if m in ("md", "markdown"):
+            return "md"
+        if m == "html":
+            return "html"
+        return None
+
+    def _build_welcome_text():
+        """يبني نص الترحيب مع التوقيع لو مفعل"""
+        text = welcome_state.get("text", "")
+        if welcome_state.get("show_source_tag", True):
+            tag = SOURCE_TAG
+            pm = _pm()
+            # حماية التوقيع من كسر التنسيق
+            if pm == "md":
+                tag = f"```\n{tag.strip()}\n```"
+            elif pm == "html":
+                tag = f"<pre>{tag.strip()}</pre>"
+            text = f"{text}\n\n{tag}"
+        return text
+
+    def _build_welcome_buttons():
+        """يبني الأزرار (custom + source) في صفوف"""
+        from telethon.tl.custom import Button
+        all_btns = []
+        # أزرار المستخدم المخصصة
+        for b in welcome_state.get("buttons", []):
+            if b.get("text") and b.get("url"):
+                all_btns.append(Button.url(b["text"], b["url"]))
+        # زر السورس آخر صف
+        if welcome_state.get("show_source_btn", True):
+            all_btns.append(Button.url(
+                welcome_state.get("source_btn_text", "𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆"),
+                welcome_state.get("source_btn_url", "https://t.me/FY_TF")
+            ))
+        if not all_btns:
+            return None
+        # ترتيب في صفوف
+        per_row = max(1, int(welcome_state.get("buttons_per_row", 2)))
+        rows = [all_btns[i:i+per_row] for i in range(0, len(all_btns), per_row)]
+        return rows
+
+    async def _send_welcome(chat_id):
+        """إرسال موحد مع 4 محاولات fallback"""
+        text = _build_welcome_text()
+        buttons = _build_welcome_buttons()
+        pm = _pm()
+        media = welcome_state.get("media", "")
+        mtype = welcome_state.get("media_type", "none")
+
+        # محاولة 1: ميديا + أزرار + تنسيق
+        if media and mtype in ("photo", "gif"):
+            try:
+                return await client.send_file(
+                    chat_id, media,
+                    caption=text, parse_mode=pm,
+                    buttons=buttons, force_document=False
+                )
+            except Exception as e:
+                logging.warning(f"ترحيب m1 فشل (ميديا): {e}")
+
+        # محاولة 2: نص + أزرار + تنسيق
+        try:
+            return await client.send_message(
+                chat_id, text, parse_mode=pm,
+                buttons=buttons, link_preview=False
+            )
+        except Exception as e:
+            logging.warning(f"ترحيب m2 فشل (نص+تنسيق): {e}")
+
+        # محاولة 3: نص + أزرار بدون تنسيق
+        try:
+            return await client.send_message(
+                chat_id, text, parse_mode=None,
+                buttons=buttons, link_preview=False
+            )
+        except Exception as e:
+            logging.warning(f"ترحيب m3 فشل (بدون تنسيق): {e}")
+
+        # محاولة 4: نص خام فقط
+        try:
+            return await client.send_message(chat_id, text, parse_mode=None)
+        except Exception as e:
+            logging.error(f"ترحيب m4 فشل نهائي: {e}")
+            return None
 
     # ══════════════════════════════════════════
     #         وظائف مساعدة مشتركة
@@ -306,113 +371,45 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
     # ══════════════════════════════════════════
     #         الترحيب التلقائي في الخاص
     # ══════════════════════════════════════════
+    import time as _time
+    welcome_last_sent = {}  # {user_id: timestamp}
+
     @client.on(events.NewMessage(incoming=True, func=lambda e: e.is_private))
     async def auto_welcome(event):
         try:
-            if not welcome_state["active"]:
+            if not welcome_state.get("active", True):
                 return
             sender_id = event.sender_id
-            if not sender_id:
+            if not sender_id or sender_id == owner_id:
                 return
-            # تجاهل النفس (الـ Saved Messages)
-            me = await client.get_me()
-            if sender_id == me.id:
+            if sender_id in accepted_users:
                 return
-            if sender_id in welcomed_users or sender_id in accepted_users:
-                logging.info(f"⏭ تخطي ترحيب user_id={sender_id} (مرحب بيه قبل كده)")
-                return
+
             sender = await event.get_sender()
             if not sender or getattr(sender, 'bot', False):
                 return
-            logging.info(f"👋 محاولة ترحيب user_id={sender_id} في chat={event.chat_id}")
-            sent = await _send_welcome_to(event.chat_id, sender_id)
+
+            # تحقق من cooldown
+            cooldown = int(welcome_state.get("cooldown", 0))
+            now = _time.time()
+            if cooldown > 0:
+                last = welcome_last_sent.get(sender_id, 0)
+                if now - last < cooldown:
+                    return
+            else:
+                # بدون cooldown = مرة واحدة فقط
+                if sender_id in welcomed_users:
+                    return
+
+            sent = await _send_welcome(event.chat_id)
             if sent:
-                logging.info(f"✔ تم إرسال الترحيب لـ {sender_id} (msg_id={sent.id})")
+                welcomed_users[sender_id] = sent.id
+                welcome_last_sent[sender_id] = now
+                logging.info(f"✔ تم إرسال ترحيب لـ {sender_id} (msg={sent.id})")
             else:
-                logging.error(f"✘ ترحيب فشل للـ {sender_id} — كل المحاولات فشلت")
+                logging.error(f"✘ فشل إرسال الترحيب لـ {sender_id}")
         except Exception as e:
-            logging.error(f"✘ auto_welcome error: {e}", exc_info=True)
-
-    async def _send_welcome_to(chat_id, sender_id=None):
-        """يبعت رسالة الترحيب لأي شات — مع دعم Markdown inline links [نص](رابط).
-        السورس بيتبعت في code-block عشان الـ box-drawing chars متلخبطش الـ parser."""
-        from telethon.tl.custom import Button
-
-        user_text = welcome_state["text"] or ""
-        pm = welcome_state["parse_mode"] if welcome_state["parse_mode"] in ("markdown", "html") else "markdown"
-
-        # السورس داخل code-block عشان مايتفسرش (شكله بيفضل زي ما هو + روابط الماركدون شغالة في النص اللي فوق)
-        if pm == "html":
-            source_block = f"\n\n<pre>{SOURCE_TAG}</pre>"
-        else:
-            source_block = f"\n\n```\n{SOURCE_TAG}\n```"
-        welcome_text = user_text + source_block
-
-        # بناء الأزرار باستخدام Button.url (الطريقة الصحيحة في Telethon)
-        btn_row = []
-        if welcome_state["btn_custom"]["active"] and welcome_state["btn_custom"]["url"]:
-            btn_row.append(Button.url(
-                welcome_state["btn_custom"]["text"] or "🔗 رابط",
-                welcome_state["btn_custom"]["url"]
-            ))
-        if welcome_state["btn_source"]["active"]:
-            btn_row.append(Button.url(
-                welcome_state["btn_source"]["text"],
-                welcome_state["btn_source"]["url"]
-            ))
-        buttons = [btn_row] if btn_row else None
-
-        sent = None
-
-        # محاولة 1: ميديا + أزرار + parse_mode
-        try:
-            media = welcome_state["photo"] if welcome_state["use_photo"] else welcome_state["gif"]
-            if media:
-                sent = await client.send_file(
-                    chat_id, media,
-                    caption=welcome_text, parse_mode=pm,
-                    buttons=buttons, link_preview=False
-                )
-            else:
-                sent = await client.send_message(
-                    chat_id, welcome_text,
-                    parse_mode=pm, buttons=buttons, link_preview=False
-                )
-        except Exception as e:
-            logging.warning(f"⚠ ترحيب محاولة 1 (ميديا+parse) فشلت: {e}")
-
-        # محاولة 2: نص + أزرار + parse_mode (بدون ميديا)
-        if sent is None:
-            try:
-                sent = await client.send_message(
-                    chat_id, welcome_text,
-                    parse_mode=pm, buttons=buttons, link_preview=False
-                )
-            except Exception as e:
-                logging.warning(f"⚠ ترحيب محاولة 2 (نص+parse) فشلت: {e}")
-
-        # محاولة 3: نص + أزرار بدون parse_mode (لو الماركدون مكسور في نص اليوزر)
-        if sent is None:
-            try:
-                fallback_text = user_text + "\n\n" + SOURCE_TAG
-                sent = await client.send_message(
-                    chat_id, fallback_text,
-                    buttons=buttons, link_preview=False
-                )
-            except Exception as e:
-                logging.warning(f"⚠ ترحيب محاولة 3 (raw+buttons) فشلت: {e}")
-
-        # محاولة 4: نص خام بس
-        if sent is None:
-            try:
-                sent = await client.send_message(chat_id, user_text + "\n\n" + SOURCE_TAG)
-            except Exception as e:
-                logging.error(f"✘ ترحيب فشل نهائياً: {e}", exc_info=True)
-                return None
-
-        if sent and sender_id is not None:
-            welcomed_users[sender_id] = sent.id
-        return sent
+            logging.error(f"✘ استثناء في auto_welcome: {e}")
 
     # ══════════════════════════════════════════
     #              معالج الأوامر
@@ -654,125 +651,254 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             await reply_or_edit(event, "🔴 تم تعطيل رد السورس!")
             return
 
-        # ════ تحكم في الترحيب ════
+        # ══════════════════════════════════════════
+        #         🎉 نظام الترحيب الجديد
+        # ══════════════════════════════════════════
+
+        # ════ مساعدة الترحيب ════
+        if cmd2 == ".ترحيب مساعدة" or cmd == ".ترحيب":
+            help_text = (
+                "👋 **أوامر الترحيب**\n"
+                "━━━━━━━━━━━━━━━\n\n"
+                "**التشغيل:**\n"
+                "`.ترحيب تشغيل` — تفعيل\n"
+                "`.ترحيب ايقاف` — تعطيل\n"
+                "`.ترحيب اعدادات` — عرض الإعدادات\n"
+                "`.ترحيب جرب` — اختبار في الرسائل المحفوظة\n"
+                "`.ترحيب مسح` — إعادة الترحيب لكل اليوزرز\n\n"
+                "**النص والميديا:**\n"
+                "`.ترحيب نص <نص>` — تغيير النص\n"
+                "`.ترحيب صورة <رابط>` — تعيين صورة\n"
+                "`.ترحيب gif <رابط>` — تعيين GIF\n"
+                "`.ترحيب بدون ميديا` — إزالة الميديا\n"
+                "`.ترحيب تنسيق md/html/none` — التنسيق\n"
+                "`.ترحيب توقيع تشغيل/ايقاف` — توقيع السورس بالنص\n\n"
+                "**الأزرار:**\n"
+                "`.ترحيب زر اضف نص | رابط` — إضافة زر\n"
+                "`.ترحيب زر حذف <رقم>` — حذف زر\n"
+                "`.ترحيب زر مسح` — حذف كل الأزرار\n"
+                "`.ترحيب زر صف <1-4>` — أزرار في الصف\n"
+                "`.ترحيب سورس تشغيل/ايقاف` — زر السورس\n\n"
+                "**التحكم:**\n"
+                "`.ترحيب تكرار <ثواني>` — 0 = مرة واحدة\n"
+                "`.قبول` — إيقاف الترحيب لشخص (بالرد)"
+            )
+            await reply_or_edit(event, help_text, parse_mode='md', link_preview=False)
+            return
+
+        # ════ تشغيل/إيقاف ════
         if cmd2 == ".ترحيب تشغيل":
             welcome_state["active"] = True
-            await reply_or_edit(event, "✔ تم تفعيل رسالة الترحيب!")
+            _save_welcome()
+            await reply_or_edit(event, "✔ تم تفعيل رسالة الترحيب")
             return
         if cmd2 == ".ترحيب ايقاف":
             welcome_state["active"] = False
-            await reply_or_edit(event, "🔴 تم تعطيل رسالة الترحيب!")
+            _save_welcome()
+            await reply_or_edit(event, "🔴 تم تعطيل رسالة الترحيب")
             return
 
-        # ════ تغيير نص الترحيب ════
+        # ════ تجربة الترحيب ════
+        if cmd2 == ".ترحيب جرب":
+            await reply_or_edit(event, "🧪 جاري إرسال الترحيب لـ Saved Messages...")
+            try:
+                me_chat = await client.get_me()
+                sent = await _send_welcome(me_chat.id)
+                if sent:
+                    await event.respond("✔ تم! شوف الرسائل المحفوظة")
+                else:
+                    await event.respond("✘ كل المحاولات فشلت — راجع userbot_errors.log")
+            except Exception as e:
+                await event.respond(f"✘ خطأ: {e}")
+            return
+
+        # ════ مسح ذاكرة الترحيب ════
+        if cmd2 == ".ترحيب مسح":
+            n1 = len(welcomed_users)
+            n2 = len(accepted_users)
+            welcomed_users.clear()
+            accepted_users.clear()
+            welcome_last_sent.clear()
+            await reply_or_edit(event, f"♻ تم مسح الذاكرة\nمُرحَّب بهم: {n1}\nمقبولين: {n2}")
+            return
+
+        # ════ تغيير النص ════
         if cmd2 == ".ترحيب نص":
             if len(parts) < 3:
-                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب نص <النص الجديد>`")
+                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب نص <النص>`")
                 return
             welcome_state["text"] = " ".join(parts[2:])
-            await reply_or_edit(event, f"✔ تم تغيير نص الترحيب!\n\n{welcome_state['text']}")
+            _save_welcome()
+            await reply_or_edit(event, "✔ تم تغيير نص الترحيب")
             return
 
-        # ════ تغيير صورة/GIF الترحيب ════
+        # ════ صورة / GIF / إزالة ميديا ════
         if cmd2 == ".ترحيب صورة":
             if len(parts) < 3:
-                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب صورة <رابط أو file_id>`")
+                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب صورة <رابط>`")
                 return
-            welcome_state["photo"] = " ".join(parts[2:]).strip()
-            welcome_state["use_photo"] = True
-            await reply_or_edit(event, f"✔ تم تغيير صورة الترحيب!\n🔗 {welcome_state['photo']}")
+            welcome_state["media"] = " ".join(parts[2:]).strip()
+            welcome_state["media_type"] = "photo"
+            _save_welcome()
+            await reply_or_edit(event, "✔ تم تعيين الصورة")
             return
         if cmd2 == ".ترحيب gif":
             if len(parts) < 3:
-                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب gif <رابط أو file_id>`")
+                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب gif <رابط>`")
                 return
-            welcome_state["gif"] = " ".join(parts[2:]).strip()
-            welcome_state["use_photo"] = False
-            await reply_or_edit(event, f"✔ تم تغيير GIF الترحيب!\n🔗 {welcome_state['gif']}")
+            welcome_state["media"] = " ".join(parts[2:]).strip()
+            welcome_state["media_type"] = "gif"
+            _save_welcome()
+            await reply_or_edit(event, "✔ تم تعيين GIF")
+            return
+        if cmd3 == ".ترحيب بدون ميديا":
+            welcome_state["media"] = ""
+            welcome_state["media_type"] = "none"
+            _save_welcome()
+            await reply_or_edit(event, "✔ تم إزالة الميديا — هيبقى نص فقط")
             return
 
-        # ════ جرب الترحيب فوراً (إرسال للنفس عشان تتأكد إنه شغال) ════
-        if cmd2 == ".ترحيب جرب":
-            await reply_or_edit(event, "📤 بابعت رسالة الترحيب لنفسك دلوقتي...")
-            try:
-                me = await client.get_me()
-                sent = await _send_welcome_to(me.id, sender_id=None)
-                if sent:
-                    await reply_or_edit(event, "✔ تم! شوف رسالتك في المحفوظات (Saved Messages).")
-                else:
-                    await reply_or_edit(event, "✘ فشل إرسال الترحيب — كل المحاولات فشلت.\nشوف اللوج في الترمنال.")
-            except Exception as e:
-                await reply_or_edit(event, f"✘ خطأ: `{e}`", parse_mode='markdown')
-                logging.error(f"✘ .ترحيب جرب: {e}", exc_info=True)
-            return
-
-        # ════ مسح قائمة المرحب بيهم (للاختبار) ════
-        if cmd2 == ".ترحيب مسح":
-            count = len(welcomed_users)
-            welcomed_users.clear()
-            accepted_users.clear()
-            await reply_or_edit(event, f"✔ تم مسح {count} مستخدم من قائمة الترحيب.\nدلوقتي أي حد يبعتلك هيتم ترحيبه من جديد.")
-            return
-
-
-        # ════ تغيير تنسيق الترحيب ════
+        # ════ تنسيق ════
         if cmd2 == ".ترحيب تنسيق":
-            if len(parts) < 3 or parts[2] not in ["markdown", "html", "none"]:
-                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب تنسيق markdown` أو `html` أو `none`")
+            if len(parts) < 3:
+                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب تنسيق md` أو `html` أو `none`")
                 return
-            welcome_state["parse_mode"] = None if parts[2] == "none" else parts[2]
-            await reply_or_edit(event, f"✔ تم تغيير التنسيق إلى: {parts[2]}")
+            mode = parts[2].lower()
+            mapping = {"md": "md", "markdown": "md", "html": "html", "none": "none", "بدون": "none"}
+            if mode not in mapping:
+                await reply_or_edit(event, "⚠️ القيم المتاحة: md / html / none")
+                return
+            welcome_state["parse_mode"] = mapping[mode]
+            _save_welcome()
+            await reply_or_edit(event, f"✔ التنسيق: {mapping[mode]}")
             return
 
-        # ════ تحكم في زر السورس ════
-        if cmd3 == ".ترحيب زر سورس":
-            if cmd4 == ".ترحيب زر سورس ايقاف":
-                welcome_state["btn_source"]["active"] = False
-                await reply_or_edit(event, "🔴 تم إخفاء زر سورس تلاشاني من الترحيب!")
-            else:
-                welcome_state["btn_source"]["active"] = True
-                await reply_or_edit(event, "✔ تم إظهار زر سورس تلاشاني في الترحيب!")
+        # ════ توقيع السورس داخل النص ════
+        if cmd3 == ".ترحيب توقيع تشغيل":
+            welcome_state["show_source_tag"] = True
+            _save_welcome()
+            await reply_or_edit(event, "✔ تم تفعيل توقيع السورس بالنص")
+            return
+        if cmd3 == ".ترحيب توقيع ايقاف":
+            welcome_state["show_source_tag"] = False
+            _save_welcome()
+            await reply_or_edit(event, "🔴 تم إخفاء توقيع السورس من النص")
             return
 
-        # ════ إضافة/تعديل زر مخصص ════
+        # ════ زر السورس ════
+        if cmd3 == ".ترحيب سورس تشغيل":
+            welcome_state["show_source_btn"] = True
+            _save_welcome()
+            await reply_or_edit(event, "✔ تم إظهار زر السورس")
+            return
+        if cmd3 == ".ترحيب سورس ايقاف":
+            welcome_state["show_source_btn"] = False
+            _save_welcome()
+            await reply_or_edit(event, "🔴 تم إخفاء زر السورس")
+            return
+
+        # ════ إضافة زر مخصص ════
         if cmd3 == ".ترحيب زر اضف":
             rest = " ".join(parts[3:])
             if "|" not in rest:
-                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب زر اضف نص الزر | https://رابط`")
+                await reply_or_edit(event,
+                    "⚠️ الاستخدام:\n`.ترحيب زر اضف نص الزر | https://الرابط`")
                 return
             btn_text, btn_url = rest.split("|", 1)
-            welcome_state["btn_custom"]["text"] = btn_text.strip()
-            welcome_state["btn_custom"]["url"] = btn_url.strip()
-            welcome_state["btn_custom"]["active"] = True
-            await reply_or_edit(event, f"✔ تم إضافة الزر!\n\n🔘 {btn_text.strip()}\n🔗 {btn_url.strip()}")
+            btn_text = btn_text.strip()
+            btn_url = btn_url.strip()
+            if not btn_text or not btn_url:
+                await reply_or_edit(event, "⚠️ النص أو الرابط فاضي")
+                return
+            if not (btn_url.startswith("http://") or btn_url.startswith("https://") or btn_url.startswith("tg://")):
+                await reply_or_edit(event, "⚠️ الرابط لازم يبدأ بـ https:// أو http:// أو tg://")
+                return
+            welcome_state.setdefault("buttons", []).append({"text": btn_text, "url": btn_url})
+            _save_welcome()
+            n = len(welcome_state["buttons"])
+            await reply_or_edit(event, f"✔ تمت إضافة الزر #{n}\n🔘 {btn_text}\n🔗 {btn_url}")
             return
 
-        # ════ إزالة الزر المخصص ════
-        if cmd3 == ".ترحيب زر شيل":
-            welcome_state["btn_custom"]["active"] = False
-            welcome_state["btn_custom"]["text"] = ""
-            welcome_state["btn_custom"]["url"] = ""
-            await reply_or_edit(event, "✔ تم إزالة الزر المخصص من الترحيب!")
+        # ════ حذف زر بالترتيب ════
+        if cmd3 == ".ترحيب زر حذف":
+            if len(parts) < 4 or not parts[3].isdigit():
+                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب زر حذف <رقم>`")
+                return
+            idx = int(parts[3]) - 1
+            btns = welcome_state.get("buttons", [])
+            if idx < 0 or idx >= len(btns):
+                await reply_or_edit(event, f"⚠️ الرقم غلط — عندك {len(btns)} زر")
+                return
+            removed = btns.pop(idx)
+            _save_welcome()
+            await reply_or_edit(event, f"✔ تم حذف الزر: {removed['text']}")
             return
 
-        # ════ عرض إعدادات الترحيب الحالية ════
+        # ════ مسح كل الأزرار ════
+        if cmd3 == ".ترحيب زر مسح":
+            welcome_state["buttons"] = []
+            _save_welcome()
+            await reply_or_edit(event, "✔ تم حذف كل الأزرار المخصصة")
+            return
+
+        # ════ أزرار في الصف ════
+        if cmd3 == ".ترحيب زر صف":
+            if len(parts) < 4 or not parts[3].isdigit():
+                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب زر صف <1-4>`")
+                return
+            n = max(1, min(4, int(parts[3])))
+            welcome_state["buttons_per_row"] = n
+            _save_welcome()
+            await reply_or_edit(event, f"✔ {n} زر في الصف")
+            return
+
+        # ════ تكرار (cooldown) ════
+        if cmd2 == ".ترحيب تكرار":
+            if len(parts) < 3 or not parts[2].isdigit():
+                await reply_or_edit(event, "⚠️ الاستخدام: `.ترحيب تكرار <ثواني>` (0 = مرة واحدة)")
+                return
+            welcome_state["cooldown"] = int(parts[2])
+            _save_welcome()
+            if welcome_state["cooldown"] == 0:
+                await reply_or_edit(event, "✔ الترحيب مرة واحدة لكل شخص")
+            else:
+                await reply_or_edit(event, f"✔ كل {welcome_state['cooldown']} ثانية")
+            return
+
+        # ════ عرض الإعدادات ════
         if cmd2 == ".ترحيب اعدادات":
-            status = "✔ مفعل" if welcome_state["active"] else "🔴 معطل"
-            media_type = "صورة 🖼" if welcome_state["use_photo"] else "GIF 🎞"
-            src_btn = "✔ ظاهر" if welcome_state["btn_source"]["active"] else "🔴 مخفي"
-            custom_btn = f"✔ {welcome_state['btn_custom']['text']}" if welcome_state["btn_custom"]["active"] else "🔴 مش موجود"
-            await reply_or_edit(event,
-                f"⚙️ **إعدادات الترحيب:**\n\n"
+            status = "✔ مفعل" if welcome_state.get("active") else "🔴 معطل"
+            mtype = welcome_state.get("media_type", "none")
+            media_label = {"photo": "🖼 صورة", "gif": "🎞 GIF", "none": "❌ بدون"}.get(mtype, mtype)
+            pm_label = {"md": "Markdown", "html": "HTML", "none": "بدون"}.get(welcome_state.get("parse_mode", "md"), "?")
+            src_tag = "✔" if welcome_state.get("show_source_tag") else "🔴"
+            src_btn = "✔" if welcome_state.get("show_source_btn") else "🔴"
+            cd = welcome_state.get("cooldown", 0)
+            cd_label = "مرة واحدة" if cd == 0 else f"كل {cd}ث"
+
+            btns = welcome_state.get("buttons", [])
+            btns_text = "\n".join([f"  {i+1}. {b['text']} → {b['url']}" for i, b in enumerate(btns)]) or "  (لا يوجد)"
+
+            text_preview = welcome_state.get("text", "")
+            if len(text_preview) > 200:
+                text_preview = text_preview[:200] + "..."
+
+            msg = (
+                f"⚙️ **إعدادات الترحيب**\n"
+                f"━━━━━━━━━━━━━━━\n"
                 f"الحالة: {status}\n"
-                f"النوع: {media_type}\n"
-                f"التنسيق: {welcome_state['parse_mode'] or 'بدون'}\n\n"
-                f"**الأزرار:**\n"
-                f"سورس تلاشاني: {src_btn}\n"
-                f"الزر المخصص: {custom_btn}\n\n"
-                f"**النص:**\n{welcome_state['text']}",
-                parse_mode='markdown'
+                f"الميديا: {media_label}\n"
+                f"التنسيق: {pm_label}\n"
+                f"التكرار: {cd_label}\n"
+                f"توقيع السورس بالنص: {src_tag}\n"
+                f"زر السورس: {src_btn}\n"
+                f"أزرار/صف: {welcome_state.get('buttons_per_row', 2)}\n\n"
+                f"**الأزرار المخصصة ({len(btns)}):**\n{btns_text}\n\n"
+                f"**النص:**\n{text_preview}"
             )
+            await reply_or_edit(event, msg, parse_mode='md', link_preview=False)
             return
+
         if cmd == ".هدية":
             await reply_or_edit(event, "🎁 جاري جمع الهدية اليومية...")
             try:
@@ -1456,14 +1582,5 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
         except Exception as e:
             logging.error(f"✘ خطأ تخزين: {e}")
 
-    # ✔ علامة إن الهاندلرز اتسجلت — لمنع التسجيل مرة تانية لو start_userbot اتنادى تاني
-    client._handlers_registered = True
-
     logging.info(f"✔ كل الهاندلرز اشتغلوا - {me.first_name}")
     print(f"✔ كل الهاندلرز اشتغلوا - {me.first_name}")
-
-    # ✔ نفضل مستنيين عشان الـ task يعيش طول ما الكلاينت متصل
-    try:
-        await client.run_until_disconnected()
-    except Exception as e:
-        logging.error(f"✘ run_until_disconnected: {e}")
