@@ -60,6 +60,13 @@ COMMANDS_TEXT = """
 `.ترحيب تشغيل` — تفعيل الترحيب
 `.ترحيب ايقاف` — تعطيل الترحيب
 `.ترحيب نص <نص>` — تغيير نص الترحيب
+`.ترحيب صورة <رابط>` — تغيير صورة الترحيب
+`.ترحيب gif <رابط>` — تغيير GIF الترحيب
+`.ترحيب تنسيق <markdown/html/none>` — تغيير التنسيق
+`.ترحيب زر سورس` — إظهار زر سورس تلاشاني
+`.ترحيب تشغيل` — تفعيل رسالة الترحيب
+`.ترحيب ايقاف` — تعطيل رسالة الترحيب
+`.ترحيب نص <النص>` — تغيير نص الترحيب
 `.قبول` — إيقاف الترحيب لمستخدم وحذف رسالته
 
 ──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
@@ -80,7 +87,7 @@ COMMANDS_TEXT = """
 📡 **تتبع القنوات:**
 `.تتبع قناة <@مصدر> <@استلام>` — بدء التتبع
 `.وقف التتبع` — إيقاف التتبع
-لتتـبع الكـوت فـي رمضان 
+
 ──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
 
 📁 **المجلدات:**
@@ -93,6 +100,18 @@ COMMANDS_TEXT = """
 👥 **نقل الأعضاء:**
 `.نقل اعضاء @مصدر @استلام` — نقل أعضاء من جروب لجروب
 
+──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
+
+💬 **التعليقات والريأكشنات:**
+`.تعليق @قناة رقم_منشور نص` — تعليق على منشور
+`.ريأكت @قناة رقم_منشور إيموجي` — ريأكت على منشور
+
+──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
+
+🔧 **إعدادات البوت:**
+`.نقل اعضاء @مصدر @استلام` — نقل أعضاء من جروب لجروب
+
+──────⌁𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆⌁──────
 """
 
 # ══════════════════════════════════════════
@@ -1071,6 +1090,58 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             return
         # لو بعتت رسالة لحد - اضيفه لـ sleep_replied عشان ميتبعتلوش رد النوم تاني
         sleep_replied.add(event.chat_id)
+
+    # ══════════════════════════════════════════
+    #    رد سورس بأزرار inline من اليوزربوت
+    # ══════════════════════════════════════════
+    DEVELOPER_ID = 1923931101
+
+    @client.on(events.NewMessage(incoming=True, pattern=r'(?i)^سورس$'))
+    async def source_reply(event):
+        if event.sender_id == owner_id:
+            return
+        try:
+            dev_name = "المطور"
+            dev_username = None
+            try:
+                dev_entity = await client.get_entity(DEVELOPER_ID)
+                dev_name = getattr(dev_entity, 'first_name', '') or "المطور"
+                dev_username = getattr(dev_entity, 'username', None)
+            except Exception:
+                pass
+
+            dev_url = f"https://t.me/{dev_username}" if dev_username else f"tg://user?id={DEVELOPER_ID}"
+
+            caption = (
+                f"**╭────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤\n"
+                f"│╭───────────⟢\n"
+                f"╞╡   Date of establishment 2022\n"
+                f"╞╡ \n"
+                f"╞╡This is the simplest thing we have\n"
+                f"│╰────────────╮\n"
+                f"│╭────────────╯\n"
+                f"╞╡      Source code in Python\n"
+                f"│╰───────────⟢\n"
+                f"╰────⌁𝗧𝗲𝗟𝗲𝗧𝗵𝗢𝗻⌁────⟤**"
+            )
+
+            # ✔ أزرار inline من اليوزربوت مباشرة
+            from telethon import Button
+            buttons = [
+                [Button.url(f"👨‍💻 {dev_name}", dev_url)],
+                [Button.url("𝗧𝗹𝗔𝘀𝗛𝗮𝗡𝘆 🔥", "https://t.me/FY_TF")],
+            ]
+
+            await client.send_message(
+                event.chat_id,
+                caption,
+                parse_mode='markdown',
+                buttons=buttons,
+                reply_to=event.id
+            )
+
+        except Exception as e:
+            logging.error(f"✘ خطأ سورس: {e}")
 
     # ══════════════════════════════════════════
     #    تخزين الرسائل - خاص / رد / منشن
