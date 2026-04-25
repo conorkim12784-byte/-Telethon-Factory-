@@ -99,6 +99,9 @@ COMMANDS_TEXT = """
 # ══════════════════════════════════════════
 #              الدالة الرئيسية
 # ══════════════════════════════════════════
+DEVELOPER_ID = 1923931101
+
+
 async def start_userbot(client: TelegramClient, target_chat, user_data_store):
     # ✔ مهم: امسح كل الهاندلرز القديمة قبل ما تضيف جديدة
     # عشان لو الجلسة اتشغلت أكتر من مرة ما يردش على الأوامر أكتر من مرة
@@ -178,17 +181,24 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
     # ══════════════════════════════════════════
     #         متابعة القنوات (كروت الشحن)
     # ══════════════════════════════════════════
+    def _normalize_chat_id(cid):
+        """يوحد كل صيغ الـ chat_id (موجب / سالب / -100xxx) في رقم موجب واحد."""
+        s = str(cid)
+        if s.startswith("-100"):
+            return int(s[4:])
+        if s.startswith("-"):
+            return int(s[1:])
+        return int(s)
+
     @client.on(events.NewMessage(incoming=True))
     async def monitor_channels(event):
         """يراقب القنوات ويستخرج الكود + الوحدات فقط، يحذفهم بعد 5 دقايق"""
         if not tracked_channels:
             return
-        # normalize: تيليجرام بيبعت -100XXXXX أو XXXXX - نوحدهم
-        raw_id = event.chat_id
-        normalized = int(str(raw_id).replace("-100", "")) if str(raw_id).startswith("-100") else raw_id
-        if normalized not in tracked_channels and raw_id not in tracked_channels:
+        normalized = _normalize_chat_id(event.chat_id)
+        if normalized not in tracked_channels:
             return
-        chat_id = normalized if normalized in tracked_channels else raw_id
+        chat_id = normalized
 
         text = event.raw_text or ""
 
@@ -367,11 +377,9 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
             try:
                 src = await client.get_entity(args[0].lstrip('@'))
                 dst = await client.get_entity(args[1].lstrip('@'))
-                src_id = src.id
+                src_id = _normalize_chat_id(src.id)
                 dst_id = dst.id
                 tracked_channels[src_id] = dst_id
-                if hasattr(src, 'access_hash'):
-                    tracked_channels[int(f"-100{src_id}")] = dst_id
                 await reply_or_edit(event,
                     f"✔ بدأ التتبع!\n"
                     f"📡 المصدر: {src.title}\n"
@@ -824,6 +832,8 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
                 return
             if event.chat_id in muted_admins:
                 muted_admins[event.chat_id].discard(target_id)
+                if not muted_admins[event.chat_id]:
+                    del muted_admins[event.chat_id]
             await reply_or_edit(event, "🔊 تم فك كتم المشرف!")
             return
 
@@ -1070,13 +1080,13 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
     async def sleep_disable_on_reply(event):
         if not sleep_state["active"]:
             return
-        # لو بعتت رسالة لحد - اضيفه لـ sleep_replied عشان ميتبعتلوش رد النوم تاني
+        # لو بعتت رسالة لحد - اضيف الـ chat partner لـ sleep_replied
+        # event.chat_id في الخاص = id الطرف التاني، ده اللي بيتقارن في sleep_auto_reply
         sleep_replied.add(event.chat_id)
 
     # ══════════════════════════════════════════
     #    رد سورس - نص ماركدون مع تحكم تشغيل/تعطيل
     # ══════════════════════════════════════════
-    DEVELOPER_ID = 1923931101
     source_state = {"active": True}
 
     @client.on(events.NewMessage(outgoing=True, pattern=r'^\.(سورس تشغيل|سورس ايقاف)$'))
@@ -1141,6 +1151,12 @@ async def start_userbot(client: TelegramClient, target_chat, user_data_store):
     async def log_messages(event):
         if not target_chat:
             return
+        # حماية من اللوب: لو الرسالة في نفس chat التخزين، تجاهلها
+        try:
+            if event.chat_id == target_chat or _normalize_chat_id(event.chat_id) == _normalize_chat_id(target_chat):
+                return
+        except Exception:
+            pass
         try:
             sender = await event.get_sender()
             if not sender:

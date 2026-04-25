@@ -1,18 +1,15 @@
-# requirements.txt - محدث فبراير 2026 - أحدث إصدارات مستقرة
+# requirements.txt - النسخة المعدلة (أبريل 2026)
+# تم تثبيت الـ versions عشان نضمن استقرار التشغيل
 
-# الـ Core لليوزربوت والـ Bot
-telethon              # أحدث إصدار مستقر (نوفمبر 2025)
-python-telegram-bot      # أحدث إصدار (يدعم Python 3.10+ بشكل كامل)
+# ═══ الـ Core ═══
+telethon==1.36.0              # MTProto للـ userbot
+python-telegram-bot==21.10    # Bot API (يدعم Bot API 9.6 / حقل style)
+aiohttp==3.10.11              # HTTP async لتحميل الصور
 
-# لتحميل الصور والـ HTTP async
-aiohttp             # أحدث إصدار (يناير 2026)
+# ═══ مساعدات ═══
+deep-translator==1.11.4       # الترجمة (لو محتاجها)
+pillow==11.1.0                # معالجة الصور
+python-dotenv==1.0.1          # قراءة .env
 
-# الترجمة (اللي كانت ناقصة عندك)
-deep-translator       # أحدث إصدار مستقر (يونيو 2023، لسه شغال ممتاز)
-
-# مساعدات إضافية مفيدة جدًا للمشروع ده
-pillow               # للتعامل مع الصور والغلاف إلخ
-python-dotenv      # لو هتحط التوكنات أو الـ API في .env ملف (مستحسن للأمان)
-
-# اختياري - لو اليوزربوت بيحتاج تسريع أو ميزات إضافية
-# cryptg                   # uncomment لو عايز تسريع Telethon (تحتاج compiler)
+# ═══ اختياري لتسريع Telethon ═══
+# cryptg==0.5.0.post0         # uncomment لو محتاج تسريع التشفير (يحتاج compiler)
