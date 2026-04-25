@@ -363,6 +363,20 @@ def back_btn():
     return DangerBtn("🔙 رجوع", callback_data="admin_home")
 
 
+def _clear_pending_state(context, user_id: int | None = None) -> None:
+    """
+    يمسح أي state معلّق من أوامر سابقة (إذاعة / انضمام جماعي / تعليق / ريأكت / إعدادات).
+    بيتنادى عند أي navigation عشان لما المستخدم يضغط رجوع ميبقاش الأمر القديم لسه شغال.
+    """
+    for key in ("mode", "dev_mode", "dev_data", "broadcast_data"):
+        context.user_data.pop(key, None)
+    if user_id is not None:
+        try:
+            admin_actions.pop(user_id, None)
+        except Exception:
+            pass
+
+
 async def show_section(query, text: str, keyboard) -> None:
     if isinstance(keyboard, InlineKeyboardMarkup):
         kb = keyboard
@@ -1947,6 +1961,11 @@ async def admin_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
     user_id = query.from_user.id
     data = query.data
+
+    # 🛡 أي ضغطة على زر بتلغي أي أمر معلّق سابق (إذاعة / انضمام / تعليق / ريأكت / إعدادات)
+    # ده بيحل مشكلة إن لما الأدمن يضغط "إذاعة" ثم "رجوع" ويبعت أي رسالة، البوت يفتكرها رسالة الإذاعة.
+    # الأقسام اللي محتاجة تفعّل mode (زي sec_broadcast / dev_ask_*) بتحط الـ mode بعد المسح ده.
+    _clear_pending_state(context, user_id)
 
     if user_id == ADMIN_ID:
         # ═══ أدوات المطور ═══
