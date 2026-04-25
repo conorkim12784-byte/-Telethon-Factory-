@@ -363,20 +363,6 @@ def back_btn():
     return DangerBtn("🔙 رجوع", callback_data="admin_home")
 
 
-def _clear_pending_state(context, user_id: int | None = None) -> None:
-    """
-    يمسح أي state معلّق من أوامر سابقة (إذاعة / انضمام جماعي / تعليق / ريأكت / إعدادات).
-    بيتنادى عند أي navigation عشان لما المستخدم يضغط رجوع ميبقاش الأمر القديم لسه شغال.
-    """
-    for key in ("mode", "dev_mode", "dev_data", "broadcast_data"):
-        context.user_data.pop(key, None)
-    if user_id is not None:
-        try:
-            admin_actions.pop(user_id, None)
-        except Exception:
-            pass
-
-
 async def show_section(query, text: str, keyboard) -> None:
     if isinstance(keyboard, InlineKeyboardMarkup):
         kb = keyboard
@@ -905,6 +891,7 @@ async def create_session_callback(update: Update, context: ContextTypes.DEFAULT_
 
     clear_user_store(user_id)
     context.user_data.clear()
+    context.user_data["in_conv"] = True
 
     msg = await query.message.reply_text(
         f"{DECOR_TOKEN} أدخل API_ID:\n\n📌 من: my.telegram.org",
@@ -971,13 +958,39 @@ async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
 
+    # تنظيف الرقم — لازم يبدأ بـ + ويكون أرقام بس
+    phone = phone.replace(" ", "").replace("-", "")
+    if not phone.startswith("+"):
+        phone = "+" + phone
+    if not phone[1:].isdigit() or len(phone) < 8:
+        await send_clean(
+            context, user_id,
+            f"{DECOR_ERROR} رقم غير صالح!\n\n"
+            f"{DECOR_PHONE} ابعت الرقم مع كود الدولة:\nمثال: `+201234567890`",
+        )
+        return PHONE_STATE
+
     store = get_user_store(user_id)
     store['phone'] = phone
 
     session_file = os.path.join(SESSIONS_DIR, f"{phone.replace('+', '')}.session")
-    client = TelegramClient(session_file, store['api_id'], store['api_hash'])
-    await client.connect()
-    store['client'] = client
+
+    try:
+        client = TelegramClient(session_file, store['api_id'], store['api_hash'])
+        await client.connect()
+        store['client'] = client
+        logging.info(f"✔ اتصلت بتيليجرام للرقم: {phone}")
+    except Exception as e:
+        logging.error(f"✘ فشل الاتصال بتيليجرام {phone}: {e!r}")
+        await send_clean(
+            context, user_id,
+            f"{DECOR_ERROR} فشل الاتصال بتيليجرام!\n\n"
+            f"التفاصيل: `{str(e)[:200]}`\n\n"
+            f"⚠️ اتأكد من API_ID و API_HASH صحيحين.\n"
+            f"ابعت /start وحاول تاني.",
+            parse_mode='Markdown',
+        )
+        return ConversationHandler.END
 
     session_data = load_session_data(phone)
     if session_data and await client.is_user_authorized():
@@ -1014,15 +1027,49 @@ async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         await client.send_code_request(phone)
+        logging.info(f"✔ تم إرسال كود التحقق للرقم: {phone}")
         await send_clean(
             context, user_id,
             f"{DECOR_CODE} تم إرسال كود التحقق!\n\n"
-            f"📲 أدخل الكود مع مسافة بين كل رقم\n"
-            f"مثال: `1 2 3 4 5`",
+            f"📲 افتح تيليجرام وشوف الكود ال جاي ليك من Telegram الرسمي\n\n"
+            f"اكتبه هنا مع مسافة بين كل رقم:\nمثال: `1 2 3 4 5`",
         )
         return CODE_STATE
+    except FloodWaitError as e:
+        logging.error(f"✘ FloodWait للرقم {phone}: {e.seconds}s")
+        await send_clean(
+            context, user_id,
+            f"{DECOR_ERROR} تيليجرام بيقولك استنى!\n\n"
+            f"⏰ لازم تستنى **{e.seconds} ثانية** قبل ما تجرب تاني.\n\n"
+            f"ابعت /start بعدها.",
+            parse_mode='Markdown',
+        )
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
+        return ConversationHandler.END
     except Exception as e:
-        await send_clean(context, user_id, f"{DECOR_ERROR} خطأ في إرسال الكود: {str(e)}\n\nحاول مرة أخرى بإرسال /start")
+        logging.error(f"✘ فشل إرسال الكود للرقم {phone}: {e!r}")
+        err_text = str(e)
+        hint = ""
+        if "PHONE_NUMBER_INVALID" in err_text:
+            hint = "\n\n⚠️ الرقم نفسه مش مظبوط أو مش متفعل على تيليجرام."
+        elif "PHONE_NUMBER_BANNED" in err_text:
+            hint = "\n\n🚫 الرقم ده محظور من تيليجرام."
+        elif "API_ID" in err_text or "API_HASH" in err_text:
+            hint = "\n\n⚠️ بيانات الـ API غلط — راجع API_ID و API_HASH."
+        await send_clean(
+            context, user_id,
+            f"{DECOR_ERROR} فشل إرسال الكود!\n\n"
+            f"التفاصيل: `{err_text[:200]}`{hint}\n\n"
+            f"ابعت /start وحاول تاني.",
+            parse_mode='Markdown',
+        )
+        try:
+            await client.disconnect()
+        except Exception:
+            pass
         return ConversationHandler.END
 
 
@@ -1178,12 +1225,14 @@ async def finalize_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_clean(context, chat_id, f"{DECOR_SUCCESS} تم التنصيب بنجاح! ✨", parse_mode='Markdown')
         # ✔ ما نمسحش الـ store لأن الـ client لازم يفضل في active_userbots
         users_sessions_data.pop(user_id, None)
+        context.user_data.pop("in_conv", None)
         return ConversationHandler.END
 
     except Exception as e:
-        logging.error(f"✘ خطأ في الإعداد النهائي: {e}")
+        logging.error(f"✘ خطأ في الإعداد النهائي: {e!r}")
         await send_clean(context, chat_id, f"{DECOR_ERROR} خطأ أثناء الإعداد: {str(e)}\n\nحاول مرة أخرى بإرسال /start")
         clear_user_store(user_id)
+        context.user_data.pop("in_conv", None)
         return ConversationHandler.END
 
 
@@ -1191,6 +1240,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     admin_actions.pop(user_id, None)
     clear_user_store(user_id)
+    context.user_data.pop("in_conv", None)
     await send_clean(context, user_id, f"{DECOR_CANCEL} تم الإلغاء")
     return ConversationHandler.END
 
@@ -1400,6 +1450,10 @@ async def restore_session_handler(update: Update, context: ContextTypes.DEFAULT_
     if not update.message or not update.message.document:
         return
 
+    # ⚠ مايتدخلش لو المستخدم في منتصف ConversationHandler (تنصيب جلسة جديدة)
+    if context.user_data.get("in_conv"):
+        return
+
     doc = update.message.document
     fname = doc.file_name or ""
     if not (fname.endswith('.session') or fname.endswith('.json')):
@@ -1409,9 +1463,87 @@ async def restore_session_handler(update: Update, context: ContextTypes.DEFAULT_
         target_path = os.path.join(SESSIONS_DIR, fname)
         file = await doc.get_file()
         await file.download_to_drive(target_path)
-        await update.message.reply_text(f"📥 تم حفظ: `{fname}`", parse_mode="Markdown")
+        logging.info(f"📥 تم استلام ملف للاستعادة: {fname}")
+
+        # ✔ لو الـ .session اتحط، نشوف لو الـ .json موجود ونشغل تلقائي
+        if fname.endswith('.session'):
+            phone = fname.replace('.session', '')
+            json_path = os.path.join(SESSIONS_DIR, f"{phone}.json")
+            if os.path.exists(json_path):
+                await update.message.reply_text(
+                    f"📥 تم حفظ: `{fname}`\n\n⏳ جاري التشغيل التلقائي...",
+                    parse_mode="Markdown",
+                )
+                # تشغيل خلفي عشان مايعطلش الـ handler
+                asyncio.create_task(_auto_start_one_session(phone, update.effective_chat.id, context))
+            else:
+                await update.message.reply_text(
+                    f"📥 تم حفظ: `{fname}`\n\n"
+                    f"⚠️ ملف `{phone}.json` ناقص — ابعته كمان عشان الجلسة تشتغل.",
+                    parse_mode="Markdown",
+                )
+        else:
+            # .json
+            phone = fname.replace('.json', '')
+            session_path = os.path.join(SESSIONS_DIR, f"{phone}.session")
+            if os.path.exists(session_path):
+                await update.message.reply_text(
+                    f"📥 تم حفظ: `{fname}`\n\n⏳ جاري التشغيل التلقائي...",
+                    parse_mode="Markdown",
+                )
+                asyncio.create_task(_auto_start_one_session(phone, update.effective_chat.id, context))
+            else:
+                await update.message.reply_text(
+                    f"📥 تم حفظ: `{fname}`\n\n"
+                    f"⚠️ ابعت كمان `{phone}.session` عشان الجلسة تشتغل.",
+                    parse_mode="Markdown",
+                )
     except Exception as e:
+        logging.error(f"✘ فشل حفظ الملف {fname}: {e!r}")
         await update.message.reply_text(f"✘ فشل حفظ الملف: {e}")
+
+
+async def _auto_start_one_session(phone: str, chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """تشغيل جلسة واحدة بعد رفعها."""
+    try:
+        if phone in active_userbots:
+            await context.bot.send_message(chat_id, f"ℹ️ الجلسة `{phone}` شغالة بالفعل.", parse_mode="Markdown")
+            return
+
+        session_data = load_session_data(phone)
+        if not session_data:
+            await context.bot.send_message(chat_id, f"⚠️ مفيش بيانات للجلسة `{phone}`", parse_mode="Markdown")
+            return
+
+        bot_token = session_data.get('bot_token')
+        api_id = session_data.get('api_id')
+        api_hash = session_data.get('api_hash')
+        target_chat = session_data.get('target_chat')
+
+        if not all([bot_token, api_id, api_hash]):
+            await context.bot.send_message(chat_id, f"⚠️ بيانات ناقصة للجلسة `{phone}`", parse_mode="Markdown")
+            return
+
+        session_path = os.path.join(SESSIONS_DIR, f"{phone}.session")
+        client = TelegramClient(session_path, int(api_id), api_hash)
+        await client.connect()
+        if not await client.is_user_authorized():
+            await client.disconnect()
+            await context.bot.send_message(chat_id, f"⚠️ الجلسة `{phone}` غير مصرح بها (انتهت).", parse_mode="Markdown")
+            return
+
+        temp_store = {'client': client, 'phone': phone, 'bot_token': bot_token, 'target_chat': target_chat}
+        task = asyncio.create_task(start_userbot(client, target_chat, temp_store))
+        monitor_task = asyncio.create_task(keep_alive_monitor(phone))
+        active_userbots[phone] = {
+            'client': client, 'task': task,
+            'monitor_task': monitor_task, 'target_chat': target_chat,
+        }
+        logging.info(f"✔ تم تشغيل الجلسة المرفوعة: {phone}")
+        await context.bot.send_message(chat_id, f"✔ تم تشغيل الجلسة `{phone}` بنجاح!", parse_mode="Markdown")
+    except Exception as e:
+        logging.error(f"✘ فشل تشغيل الجلسة المرفوعة {phone}: {e!r}")
+        await context.bot.send_message(chat_id, f"✘ فشل تشغيل `{phone}`: {str(e)[:200]}", parse_mode="Markdown")
 
 
 async def start_restored_session_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1961,11 +2093,6 @@ async def admin_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
     user_id = query.from_user.id
     data = query.data
-
-    # 🛡 أي ضغطة على زر بتلغي أي أمر معلّق سابق (إذاعة / انضمام / تعليق / ريأكت / إعدادات)
-    # ده بيحل مشكلة إن لما الأدمن يضغط "إذاعة" ثم "رجوع" ويبعت أي رسالة، البوت يفتكرها رسالة الإذاعة.
-    # الأقسام اللي محتاجة تفعّل mode (زي sec_broadcast / dev_ask_*) بتحط الـ mode بعد المسح ده.
-    _clear_pending_state(context, user_id)
 
     if user_id == ADMIN_ID:
         # ═══ أدوات المطور ═══
